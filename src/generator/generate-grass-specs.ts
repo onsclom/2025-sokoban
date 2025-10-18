@@ -1,10 +1,10 @@
 const stoneSpecs = [] as { x: number; y: number; size: number }[];
-const stoneSpecCount = 5;
+const stoneSpecCount = 120;
 for (let i = 0; i < stoneSpecCount; i++) {
   stoneSpecs.push({
     x: Math.random(),
     y: Math.random(),
-    size: Math.random() * 0.1 + 0.1,
+    size: Math.random() * 0.075 + 0.025,
   });
 }
 

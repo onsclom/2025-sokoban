@@ -8,6 +8,88 @@ import { playInvalidMoveSound, playStepSound } from "./sound";
 
 import { classicLevels } from "./levels/parse-levels";
 
+// Cached textures for performance
+let cachedGrassTexture: HTMLCanvasElement | null = null;
+let cachedStoneTexture: HTMLCanvasElement | null = null;
+
+function createGrassTexture(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 100; // 100px will be scaled down to 1 unit
+  canvas.height = 100;
+  const ctx = canvas.getContext("2d")!;
+
+  // Fill base green color
+  ctx.fillStyle = "green";
+  ctx.fillRect(0, 0, 100, 100);
+  ctx.fillStyle = "#090";
+
+  // Draw grass specs
+  for (const spec of grassSpecs) {
+    for (const y of [-1, 0, 1]) {
+      for (const x of [-1, 0, 1]) {
+        // each spec is a triangle which fits in the spec circle
+        ctx.beginPath();
+        const angle = (Math.PI * 2) / 3;
+        ctx.moveTo(
+          (spec.x + x) * 100 +
+            spec.size * 100 * Math.cos(angle * 0 - Math.PI / 2),
+          (spec.y + y) * 100 +
+            spec.size * 100 * Math.sin(angle * 0 - Math.PI / 2),
+        );
+        ctx.lineTo(
+          (spec.x + x) * 100 +
+            spec.size * 100 * Math.cos(angle * 1 - Math.PI / 2),
+          (spec.y + y) * 100 +
+            spec.size * 100 * Math.sin(angle * 1 - Math.PI / 2),
+        );
+        ctx.lineTo(
+          (spec.x + x) * 100 +
+            spec.size * 100 * Math.cos(angle * 2 - Math.PI / 2),
+          (spec.y + y) * 100 +
+            spec.size * 100 * Math.sin(angle * 2 - Math.PI / 2),
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  return canvas;
+}
+
+function createStoneTexture(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 100; // 100px will be scaled down to 1 unit
+  canvas.height = 100;
+  const ctx = canvas.getContext("2d")!;
+
+  // Fill base gray color
+  ctx.fillStyle = "gray";
+  ctx.fillRect(0, 0, 100, 100);
+  ctx.fillStyle = "darkgray";
+
+  // Draw stone specs
+  for (const spec of stoneSpecs) {
+    for (const y of [-1, 0, 1]) {
+      for (const x of [-1, 0, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(
+          (spec.x + x) * 100,
+          (spec.y + y) * 100,
+          spec.size * 100,
+          spec.size * 100,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+    }
+  }
+
+  return canvas;
+}
+
 // sokoban
 const animationSpeed = 0.02;
 
@@ -60,6 +142,14 @@ function loadLevel() {
 }
 
 export function tick(ctx: CanvasRenderingContext2D, dt: number) {
+  // Initialize cached textures on first tick
+  if (!cachedGrassTexture) {
+    cachedGrassTexture = createGrassTexture();
+  }
+  if (!cachedStoneTexture) {
+    cachedStoneTexture = createStoneTexture();
+  }
+
   state.animation.timeTillNextBlink -= dt;
 
   if (state.animation.isBlinking) {
@@ -269,65 +359,23 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     // center level
     // by default at (0, 0)
     ctx.translate(-levelSize.width / 2, -levelSize.height / 2);
-    // draw floor
+    // draw floor using cached texture
     for (const floor of state.level.static.floors) {
-      ctx.fillStyle = "green";
-      ctx.fillRect(floor.x, floor.y, 1, 1);
-      ctx.fillStyle = "#090";
-
-      // clip area
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(floor.x, floor.y, 1, 1);
-      ctx.clip();
-
-      for (const spec of grassSpecs) {
-        for (const y of [-1, 0, 1]) {
-          for (const x of [-1, 0, 1]) {
-            // each spec is a triangle which fits in the spec circle
-            ctx.beginPath();
-            const angle = (Math.PI * 2) / 3;
-            ctx.moveTo(
-              floor.x +
-                spec.x +
-                x +
-                spec.size * Math.cos(angle * 0 - Math.PI / 2),
-              floor.y +
-                spec.y +
-                y +
-                spec.size * Math.sin(angle * 0 - Math.PI / 2),
-            );
-            ctx.lineTo(
-              floor.x +
-                spec.x +
-                x +
-                spec.size * Math.cos(angle * 1 - Math.PI / 2),
-              floor.y +
-                spec.y +
-                y +
-                spec.size * Math.sin(angle * 1 - Math.PI / 2),
-            );
-            ctx.lineTo(
-              floor.x +
-                spec.x +
-                x +
-                spec.size * Math.cos(angle * 2 - Math.PI / 2),
-              floor.y +
-                spec.y +
-                y +
-                spec.size * Math.sin(angle * 2 - Math.PI / 2),
-            );
-            ctx.closePath();
-            ctx.fill();
-          }
-        }
+      if (cachedGrassTexture) {
+        ctx.save();
+        ctx.translate(floor.x, floor.y);
+        ctx.scale(0.01, 0.01); // Scale down from 100px to 1 unit
+        ctx.drawImage(cachedGrassTexture, 0, 0);
+        ctx.restore();
+      } else {
+        // Fallback to simple green if texture not loaded
+        ctx.fillStyle = "green";
+        ctx.fillRect(floor.x, floor.y, 1, 1);
       }
-
-      ctx.restore();
     }
     {
       const shadowOffset = 0.1;
-      ctx.fillStyle = "rgba(0, 0, 0, .6)";
+      ctx.fillStyle = "rgba(0, 0, 0, .75)";
       for (const wall of state.level.static.walls) {
         ctx.fillRect(wall.x + shadowOffset, wall.y + shadowOffset, 1, 1);
       }
@@ -346,42 +394,24 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.fill();
       ctx.restore();
     }
-    // draw walls
+    // draw walls using cached texture
     for (const wall of state.level.static.walls) {
-      ctx.fillStyle = "gray";
-      ctx.fillRect(wall.x, wall.y, 1, 1);
-
-      // draw specs inside wall with clip rect
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(wall.x, wall.y, 1, 1);
-      ctx.clip();
-      ctx.fillStyle = "darkgray";
-
-      for (const spec of stoneSpecs) {
-        for (const y of [-1, 0, 1]) {
-          for (const x of [-1, 0, 1]) {
-            ctx.beginPath();
-            ctx.ellipse(
-              wall.x + spec.x + x,
-              wall.y + spec.y + y,
-              spec.size,
-              spec.size,
-              0,
-              0,
-              Math.PI * 2,
-            );
-            ctx.fill();
-          }
-        }
+      if (cachedStoneTexture) {
+        ctx.save();
+        ctx.translate(wall.x, wall.y);
+        ctx.scale(0.01, 0.01); // Scale down from 100px to 1 unit
+        ctx.drawImage(cachedStoneTexture, 0, 0);
+        ctx.restore();
+      } else {
+        // Fallback to simple gray if texture not loaded
+        ctx.fillStyle = "gray";
+        ctx.fillRect(wall.x, wall.y, 1, 1);
       }
-
-      ctx.restore();
     }
 
     // draw goals
     ctx.strokeStyle = "yellow";
-    ctx.lineWidth = 0.1;
+    ctx.lineWidth = 0.075;
     for (const goal of state.level.static.goals) {
       ctx.strokeRect(goal.x + 0.2, goal.y + 0.2, 0.6, 0.6);
     }
