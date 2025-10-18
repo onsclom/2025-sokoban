@@ -342,7 +342,6 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
         ctx.restore();
       }
 
-      // mouth
       const happiness = state.animation.animatedHappines; // from 0 (sad) to 1 (happy)
       ctx.strokeStyle = "black";
       ctx.lineWidth = 0.05;
