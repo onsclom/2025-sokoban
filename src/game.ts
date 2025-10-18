@@ -1,10 +1,6 @@
-import {
-  generateLevel,
-  levelDimensions,
-  levelFromText,
-  testLevel,
-} from "./sokoban";
+import { generateLevel, levelDimensions } from "./sokoban";
 import stoneSpecs from "./generator/stone-specs.json";
+import grassSpecs from "./generator/grass-specs.json";
 
 import * as Camera from "./camera";
 import * as Input from "./input";
@@ -57,18 +53,8 @@ const initState = {
 
 const state = structuredClone(initState);
 
-// const stoneSpecs = [] as { x: number; y: number; size: number }[];
-// const stoneSpecCount = 8;
-// for (let i = 0; i < stoneSpecCount; i++) {
-//   stoneSpecs.push({
-//     x: Math.random(),
-//     y: Math.random(),
-//     size: Math.random() * 0.15 + 0.05,
-//   });
-// }
-
 function loadLevel() {
-  state.level = classicLevels[state.curClassicIndex]!.level;
+  state.level = structuredClone(classicLevels[state.curClassicIndex]!.level);
   state.animation = structuredClone(initAnimation); // reset animation
   state.undoStack = [];
 }
@@ -287,6 +273,57 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     for (const floor of state.level.static.floors) {
       ctx.fillStyle = "green";
       ctx.fillRect(floor.x, floor.y, 1, 1);
+      ctx.fillStyle = "#090";
+
+      // clip area
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(floor.x, floor.y, 1, 1);
+      ctx.clip();
+
+      for (const spec of grassSpecs) {
+        for (const y of [-1, 0, 1]) {
+          for (const x of [-1, 0, 1]) {
+            // each spec is a triangle which fits in the spec circle
+            ctx.beginPath();
+            const angle = (Math.PI * 2) / 3;
+            ctx.moveTo(
+              floor.x +
+                spec.x +
+                x +
+                spec.size * Math.cos(angle * 0 - Math.PI / 2),
+              floor.y +
+                spec.y +
+                y +
+                spec.size * Math.sin(angle * 0 - Math.PI / 2),
+            );
+            ctx.lineTo(
+              floor.x +
+                spec.x +
+                x +
+                spec.size * Math.cos(angle * 1 - Math.PI / 2),
+              floor.y +
+                spec.y +
+                y +
+                spec.size * Math.sin(angle * 1 - Math.PI / 2),
+            );
+            ctx.lineTo(
+              floor.x +
+                spec.x +
+                x +
+                spec.size * Math.cos(angle * 2 - Math.PI / 2),
+              floor.y +
+                spec.y +
+                y +
+                spec.size * Math.sin(angle * 2 - Math.PI / 2),
+            );
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      }
+
+      ctx.restore();
     }
     {
       const shadowOffset = 0.1;
@@ -341,19 +378,50 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
 
       ctx.restore();
     }
+
     // draw goals
     ctx.strokeStyle = "yellow";
     ctx.lineWidth = 0.1;
     for (const goal of state.level.static.goals) {
       ctx.strokeRect(goal.x + 0.2, goal.y + 0.2, 0.6, 0.6);
     }
+
     // draw boxes
-    // console.log(state.animation.boxes);
     for (const box of state.animation.boxes) {
-      ctx.fillStyle = "#895129";
+      // make a border and X for boxes
+      ctx.fillStyle = "#674016";
       ctx.fillRect(box.x, box.y, 1, 1);
+      {
+        const BOX_BORDER_SIZE = 0.075;
+        const BOX_X_INSET = BOX_BORDER_SIZE / 2;
+
+        ctx.fillStyle = "#895129";
+        ctx.fillRect(box.x + 0.1, box.y + 0.1, 0.8, 0.8);
+        ctx.fillRect(
+          box.x + BOX_BORDER_SIZE,
+          box.y + BOX_BORDER_SIZE,
+          1 - 2 * BOX_BORDER_SIZE,
+          1 - 2 * BOX_BORDER_SIZE,
+        );
+
+        ctx.strokeStyle = "#674016";
+        // draw X
+        ctx.beginPath();
+        ctx.moveTo(box.x + 0.05, box.y + 0.05);
+        ctx.lineTo(box.x + 0.95, box.y + 0.95);
+        ctx.moveTo(box.x + 0.95, box.y + 0.05);
+        ctx.lineTo(box.x + 0.05, box.y + 0.95);
+        ctx.lineWidth = 0.1;
+        ctx.moveTo(box.x + BOX_X_INSET, box.y + BOX_X_INSET);
+        ctx.lineTo(box.x + 1 - BOX_X_INSET, box.y + 1 - BOX_X_INSET);
+        ctx.moveTo(box.x + 1 - BOX_X_INSET, box.y + BOX_X_INSET);
+        ctx.lineTo(box.x + BOX_X_INSET, box.y + 1 - BOX_X_INSET);
+        ctx.lineWidth = BOX_BORDER_SIZE;
+        ctx.stroke();
+      }
+
       // draw gold tint above box
-      ctx.globalAlpha = box.tint * 0.5;
+      ctx.globalAlpha = box.tint * 0.25;
       ctx.fillStyle = "yellow";
       ctx.fillRect(box.x, box.y, 1, 1);
       ctx.globalAlpha = 1;
