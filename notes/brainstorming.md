@@ -1,7 +1,6 @@
 fun things to do:
 
 - improve base playing experience
-  - undo
   - dust from movement?
 
 - bring in some levels: https://www.sourcecode.se/sokoban/levels.php

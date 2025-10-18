@@ -19,6 +19,14 @@ const initAnimation = {
   boxes: [] as { x: number; y: number; tint: number }[],
   player: { x: 0, y: 0 },
   cameraOffset: { x: 0, y: 0 },
+
+  lastDirection: { x: 0, y: 0 },
+  eyesLooking: { x: 0, y: 0 },
+
+  happinessTarget: 0.5,
+  animatedHappines: 0.5,
+
+  undoTransparency: 0,
 };
 
 const keyRepeatDelay = 250;
@@ -72,6 +80,8 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       const lastState = state.undoStack.pop()!;
       state.level.dynamic = structuredClone(lastState);
       playStepSound();
+      state.animation.happinessTarget = 0.5;
+      state.animation.undoTransparency = 1.0;
     }
   }
 
@@ -85,6 +95,29 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     0,
     1 - Math.exp(-animationSpeed * dt),
   );
+  state.animation.eyesLooking.x = lerp(
+    state.animation.eyesLooking.x,
+    state.animation.lastDirection.x,
+    1 - Math.exp(-animationSpeed * dt),
+  );
+  state.animation.eyesLooking.y = lerp(
+    state.animation.eyesLooking.y,
+    state.animation.lastDirection.y,
+    1 - Math.exp(-animationSpeed * dt),
+  );
+  state.animation.animatedHappines = lerp(
+    state.animation.animatedHappines,
+    state.animation.happinessTarget,
+    1 - Math.exp(-animationSpeed * dt),
+  );
+
+  {
+    state.animation.undoTransparency -= (dt / 1000) * 2; // fade out over 0.5 seconds
+    state.animation.undoTransparency = Math.max(
+      0,
+      state.animation.undoTransparency,
+    );
+  }
 
   if (
     Input.keysJustPressed.has("d") ||
@@ -144,15 +177,8 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
   }
 
   if (Input.keysJustPressed.has("r")) {
-    // generate level
-    state.level = generateLevel({
-      width: 10,
-      height: 10,
-      boxAmount: 3,
-      generationMoves: 100,
-    });
-    state.animation = structuredClone(initAnimation); // reset animation
-    state.undoStack = [];
+    // restart level
+    loadLevel();
   }
 
   if (!state.animation.initialized) {
@@ -194,7 +220,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       1 - Math.exp(-animationSpeed * dt),
     );
   }
-  ctx.fillStyle = "#88f";
+  ctx.fillStyle = "#99f";
   const rect = ctx.canvas.getBoundingClientRect();
   ctx.fillRect(0, 0, rect.width, rect.height);
   const levelSize = levelDimensions(state.level);
@@ -221,7 +247,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     }
     {
       const shadowOffset = 0.1;
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.fillStyle = "rgba(0, 0, 0, .6)";
       for (const wall of state.level.static.walls) {
         ctx.fillRect(wall.x + shadowOffset, wall.y + shadowOffset, 1, 1);
       }
@@ -268,17 +294,43 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.beginPath();
       ctx.arc(player.x + 0.5, player.y + 0.5, 0.5, 0, Math.PI * 2);
       ctx.fill();
-      // eyes
+
       ctx.fillStyle = "white";
       ctx.beginPath();
-      ctx.arc(player.x + 0.3, player.y + 0.4, 0.2, 0, Math.PI * 2);
-      ctx.arc(player.x + 0.7, player.y + 0.4, 0.2, 0, Math.PI * 2);
+      ctx.arc(player.x + 0.3, player.y + 0.4, 0.19, 0, Math.PI * 2);
+      ctx.arc(player.x + 0.7, player.y + 0.4, 0.19, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "black";
       ctx.beginPath();
+      ctx.save();
+      ctx.translate(
+        state.animation.eyesLooking.x * 0.075,
+        state.animation.eyesLooking.y * 0.075,
+      );
       ctx.arc(player.x + 0.3, player.y + 0.4, 0.075, 0, Math.PI * 2);
       ctx.arc(player.x + 0.7, player.y + 0.4, 0.075, 0, Math.PI * 2);
+      ctx.restore();
       ctx.fill();
+
+      // mouth
+      const happiness = state.animation.animatedHappines; // from 0 (sad) to 1 (happy)
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 0.05;
+      ctx.beginPath();
+      const mouthWidth = 0.3;
+      const mouthY = player.y + 0.675;
+      const mouthCenterX = player.x + 0.5;
+      // Calculate curve amount based on happiness (negative = frown, positive = smile)
+      const curveAmount = (happiness - 0.5) * 0.2;
+
+      ctx.moveTo(mouthCenterX - mouthWidth / 2, mouthY);
+      ctx.quadraticCurveTo(
+        mouthCenterX,
+        mouthY + curveAmount,
+        mouthCenterX + mouthWidth / 2,
+        mouthY,
+      );
+      ctx.stroke();
     }
   });
 
@@ -287,6 +339,20 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
   const fontSize = 60;
   ctx.font = `${fontSize}px sans-serif`;
   ctx.textAlign = "center";
+
+  {
+    // undo text
+    ctx.globalAlpha = state.animation.undoTransparency;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const fontSize = 100;
+    ctx.font = `${fontSize}px sans-serif`;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    ctx.fillStyle = "#f22";
+    ctx.fillText("UNDO", rect.width / 2, rect.height - fontSize);
+    ctx.globalAlpha = 1;
+  }
 
   ctx.fillStyle = "black";
   const offset = 3;
@@ -346,6 +412,7 @@ function attemptMovePlayer(dx: number, dy: number) {
     state.animation.cameraOffset.x += -dx * 0.5;
     state.animation.cameraOffset.y += -dy * 0.5;
     playInvalidMoveSound();
+    state.animation.happinessTarget = 0.0;
     return;
   }
 
@@ -356,6 +423,19 @@ function attemptMovePlayer(dx: number, dy: number) {
   playStepSound();
 
   state.undoStack.push(previousState);
+  state.animation.lastDirection.x = dx;
+  state.animation.lastDirection.y = dy;
+  state.animation.happinessTarget = 0.5;
+
+  // check if game solved
+  const solved = state.level.dynamic.boxes.every((box) =>
+    state.level.static.goals.some(
+      (goal) => goal.x === box.x && goal.y === box.y,
+    ),
+  );
+  if (solved) {
+    state.animation.happinessTarget = 1.0;
+  }
 }
 
 function lerp(a: number, b: number, t: number) {
