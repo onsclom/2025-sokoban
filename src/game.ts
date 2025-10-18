@@ -18,6 +18,9 @@ const initAnimation = {
   initialized: false,
   boxes: [] as { x: number; y: number; tint: number }[],
   player: { x: 0, y: 0 },
+  playerXScale: 1,
+  playerYScale: 1,
+
   cameraOffset: { x: 0, y: 0 },
 
   lastDirection: { x: 0, y: 0 },
@@ -108,6 +111,16 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
   state.animation.animatedHappines = lerp(
     state.animation.animatedHappines,
     state.animation.happinessTarget,
+    1 - Math.exp(-animationSpeed * dt),
+  );
+  state.animation.playerXScale = lerp(
+    state.animation.playerXScale,
+    1,
+    1 - Math.exp(-animationSpeed * dt),
+  );
+  state.animation.playerYScale = lerp(
+    state.animation.playerYScale,
+    1,
     1 - Math.exp(-animationSpeed * dt),
   );
 
@@ -255,15 +268,16 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
         ctx.fillRect(box.x + shadowOffset, box.y + shadowOffset, 1, 1);
       }
       const player = state.animation.player;
-      ctx.beginPath();
-      ctx.arc(
+      ctx.save();
+      ctx.translate(
         player.x + 0.5 + shadowOffset,
         player.y + 0.5 + shadowOffset,
-        0.5,
-        0,
-        Math.PI * 2,
       );
+      ctx.scale(state.animation.playerXScale, state.animation.playerYScale);
+      ctx.beginPath();
+      ctx.arc(0, 0, 0.5, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
     // draw walls
     for (const wall of state.level.static.walls) {
@@ -290,9 +304,13 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     // draw player
     {
       const player = state.animation.player;
+      ctx.save();
+      ctx.translate(player.x + 0.5, player.y + 0.5);
+      ctx.scale(state.animation.playerXScale, state.animation.playerYScale);
+      // Draw body (now relative to 0,0)
       ctx.fillStyle = "#FFA500";
       ctx.beginPath();
-      ctx.arc(player.x + 0.5, player.y + 0.5, 0.5, 0, Math.PI * 2);
+      ctx.arc(0, 0, 0.5, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = "white";
