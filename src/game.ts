@@ -1,24 +1,75 @@
-import { levelDimensions, levelFromText, testLevel } from "./sokoban";
+import {
+  generateLevel,
+  levelDimensions,
+  levelFromText,
+  testLevel,
+} from "./sokoban";
+
 import * as Camera from "./camera";
 import * as Input from "./input";
-import { playStepSound } from "./sound";
+import { playInvalidMoveSound, playStepSound } from "./sound";
+
+import { classicLevels } from "./levels/parse-levels";
 
 // sokoban
 const animationSpeed = 0.02;
 
+const initAnimation = {
+  initialized: false,
+  boxes: [] as { x: number; y: number; tint: number }[],
+  player: { x: 0, y: 0 },
+  cameraOffset: { x: 0, y: 0 },
+};
+
+const keyRepeatDelay = 250;
+const keyRepeatInterval = 115;
+
 const initState = {
-  level: levelFromText(testLevel),
-  animation: {
-    initialized: false,
-    boxes: [] as { x: number; y: number; tint: number }[],
-    player: { x: 0, y: 0 },
-  },
+  level: classicLevels[0]!.level,
+
+  curClassicIndex: 0,
+
+  animation: structuredClone(initAnimation),
   camera: Camera.create(),
+
+  keyRepeat: {
+    lastDir: { x: 0, y: 0 },
+    timeHeld: 0,
+    repeats: 0,
+  },
 };
 
 const state = structuredClone(initState);
 
 export function tick(ctx: CanvasRenderingContext2D, dt: number) {
+  if (Input.keysJustPressed.has("q")) {
+    state.curClassicIndex -= 1;
+    if (state.curClassicIndex < 0) {
+      state.curClassicIndex = classicLevels.length - 1;
+    }
+    state.level = classicLevels[state.curClassicIndex]!.level;
+    state.animation = structuredClone(initAnimation); // reset animation
+  }
+  if (Input.keysJustPressed.has("e")) {
+    state.curClassicIndex += 1;
+    if (state.curClassicIndex >= classicLevels.length) {
+      state.curClassicIndex = 0;
+    }
+    state.level = classicLevels[state.curClassicIndex]!.level;
+    state.animation = structuredClone(initAnimation); // reset animation
+  }
+
+  state.animation.cameraOffset.x = lerp(
+    state.animation.cameraOffset.x,
+    0,
+    1 - Math.exp(-animationSpeed * dt),
+  );
+  state.animation.cameraOffset.y = lerp(
+    state.animation.cameraOffset.y,
+    0,
+    1 - Math.exp(-animationSpeed * dt),
+  );
+
   if (
     Input.keysJustPressed.has("d") ||
     Input.keysJustPressed.has("ArrowRight")
@@ -41,6 +92,55 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     attemptMovePlayer(0, 1);
   }
 
+  // handle keyRepeat here
+  const curDir = { x: 0, y: 0 };
+  if (Input.keysDown.has("d") || Input.keysDown.has("ArrowRight")) {
+    curDir.x = 1;
+  } else if (Input.keysDown.has("a") || Input.keysDown.has("ArrowLeft")) {
+    curDir.x = -1;
+  } else if (Input.keysDown.has("w") || Input.keysDown.has("ArrowUp")) {
+    curDir.y = -1;
+  } else if (Input.keysDown.has("s") || Input.keysDown.has("ArrowDown")) {
+    curDir.y = 1;
+  }
+  if (
+    curDir.x === state.keyRepeat.lastDir.x &&
+    curDir.y === state.keyRepeat.lastDir.y &&
+    (curDir.x !== 0 || curDir.y !== 0)
+  ) {
+    state.keyRepeat.timeHeld += dt;
+    if (state.keyRepeat.timeHeld >= keyRepeatDelay) {
+      const oldRepeats = state.keyRepeat.repeats;
+      const newRepeats = Math.max(
+        0,
+        (state.keyRepeat.timeHeld - keyRepeatDelay) / keyRepeatInterval,
+      );
+      state.keyRepeat.repeats = Math.floor(newRepeats);
+      if (oldRepeats !== state.keyRepeat.repeats) {
+        attemptMovePlayer(curDir.x, curDir.y);
+      }
+    }
+  } else {
+    // new direction or no direction
+    state.keyRepeat.lastDir = curDir;
+    state.keyRepeat.timeHeld = 0;
+    state.keyRepeat.repeats = 0;
+  }
+
+  if (Input.keysJustPressed.has("e")) {
+  }
+
+  if (Input.keysJustPressed.has("r")) {
+    // generate level
+    state.level = generateLevel({
+      width: 10,
+      height: 10,
+      boxAmount: 3,
+      generationMoves: 100,
+    });
+    state.animation = structuredClone(initAnimation); // reset animation
+  }
+
   if (!state.animation.initialized) {
     state.animation.initialized = true;
     state.animation.player.x = state.level.dynamic.player.x;
@@ -51,16 +151,13 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       tint: 0,
     }));
   }
-
   {
     // animate things
     for (let i = 0; i < state.animation.boxes.length; i++) {
       const box = state.animation.boxes[i]!;
       const targetBox = state.level.dynamic.boxes[i]!;
-
       box.x = lerp(box.x, targetBox.x, 1 - Math.exp(-animationSpeed * dt));
       box.y = lerp(box.y, targetBox.y, 1 - Math.exp(-animationSpeed * dt));
-
       const boxOnGoal = state.level.static.goals.some(
         (goal) => goal.x === targetBox.x && goal.y === targetBox.y,
       );
@@ -71,7 +168,6 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
         1 - Math.exp(-animationSpeed * dt),
       );
     }
-
     const targetPlayer = state.level.dynamic.player;
     state.animation.player.x = lerp(
       state.animation.player.x,
@@ -84,33 +180,34 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       1 - Math.exp(-animationSpeed * dt),
     );
   }
-
   ctx.fillStyle = "#88f";
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const rect = ctx.canvas.getBoundingClientRect();
+  ctx.fillRect(0, 0, rect.width, rect.height);
   const levelSize = levelDimensions(state.level);
-
   state.camera.zoom =
     Camera.aspectFitZoom(
       ctx.canvas.getBoundingClientRect(),
       levelSize.width,
       levelSize.height,
     ) * 0.9;
-
   // draw sokoban
   Camera.drawWithCamera(ctx, state.camera, (ctx) => {
+    ctx.translate(
+      state.animation.cameraOffset.x,
+      state.animation.cameraOffset.y,
+    );
+
+    // center level
     // by default at (0, 0)
     ctx.translate(-levelSize.width / 2, -levelSize.height / 2);
-
     // draw floor
     for (const floor of state.level.static.floors) {
       ctx.fillStyle = "green";
       ctx.fillRect(floor.x, floor.y, 1, 1);
     }
-
     {
       const shadowOffset = 0.1;
       ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-
       for (const wall of state.level.static.walls) {
         ctx.fillRect(wall.x + shadowOffset, wall.y + shadowOffset, 1, 1);
       }
@@ -128,33 +225,28 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       );
       ctx.fill();
     }
-
     // draw walls
     for (const wall of state.level.static.walls) {
       ctx.fillStyle = "gray";
       ctx.fillRect(wall.x, wall.y, 1, 1);
     }
-
     // draw goals
     ctx.strokeStyle = "yellow";
     ctx.lineWidth = 0.1;
     for (const goal of state.level.static.goals) {
       ctx.strokeRect(goal.x + 0.2, goal.y + 0.2, 0.6, 0.6);
     }
-
     // draw boxes
     // console.log(state.animation.boxes);
     for (const box of state.animation.boxes) {
       ctx.fillStyle = "#895129";
       ctx.fillRect(box.x, box.y, 1, 1);
-
       // draw gold tint above box
       ctx.globalAlpha = box.tint * 0.5;
       ctx.fillStyle = "yellow";
       ctx.fillRect(box.x, box.y, 1, 1);
       ctx.globalAlpha = 1;
     }
-
     // draw player
     {
       const player = state.animation.player;
@@ -164,6 +256,19 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.fill();
     }
   });
+
+  ctx.fillStyle = "black";
+  const levelName = classicLevels[state.curClassicIndex]!.name;
+  const fontSize = 60;
+  ctx.font = `${fontSize}px sans-serif`;
+  ctx.textAlign = "center";
+
+  ctx.fillStyle = "black";
+  const offset = 3;
+  ctx.fillText(`${levelName}`, rect.width / 2 + offset, fontSize + offset);
+  ctx.fillStyle = "white";
+  ctx.fillText(`${levelName}`, rect.width / 2, fontSize);
+
   Input.resetInput();
 }
 
@@ -177,9 +282,9 @@ function attemptMovePlayer(dx: number, dy: number) {
     (wall) => wall.x === targetX && wall.y === targetY,
   );
 
+  let invalid = false;
   if (wallExists) {
-    // INVALID
-    return;
+    invalid = true;
   }
 
   const boxExists = state.level.dynamic.boxes.findIndex(
@@ -194,20 +299,27 @@ function attemptMovePlayer(dx: number, dy: number) {
       (wall) => wall.x === boxTargetX && wall.y === boxTargetY,
     );
     if (wallExistsForBox) {
-      // INVALID
-      return;
+      invalid = true;
     }
     const boxExistsForBox = state.level.dynamic.boxes.some(
       (box) => box.x === boxTargetX && box.y === boxTargetY,
     );
     if (boxExistsForBox) {
-      // INVALID
-      return;
+      invalid = true;
     }
 
     // move box
-    state.level.dynamic.boxes[boxExists]!.x = boxTargetX;
-    state.level.dynamic.boxes[boxExists]!.y = boxTargetY;
+    if (!invalid) {
+      state.level.dynamic.boxes[boxExists]!.x = boxTargetX;
+      state.level.dynamic.boxes[boxExists]!.y = boxTargetY;
+    }
+  }
+
+  if (invalid) {
+    state.animation.cameraOffset.x += state.camera.zoom * -dx * 0.005;
+    state.animation.cameraOffset.y += state.camera.zoom * -dy * 0.005;
+    playInvalidMoveSound();
+    return;
   }
 
   // if still here, make move
