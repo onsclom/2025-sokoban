@@ -30,6 +30,9 @@ const initAnimation = {
   animatedHappines: 0.5,
 
   undoTransparency: 0,
+
+  timeTillNextBlink: 3000 + Math.random() * 2000, // 3-5 seconds initially
+  isBlinking: false,
 };
 
 const keyRepeatDelay = 250;
@@ -60,6 +63,20 @@ function loadLevel() {
 }
 
 export function tick(ctx: CanvasRenderingContext2D, dt: number) {
+  state.animation.timeTillNextBlink -= dt;
+
+  if (state.animation.isBlinking) {
+    if (state.animation.timeTillNextBlink <= 0) {
+      state.animation.isBlinking = false;
+      state.animation.timeTillNextBlink = 3000 + Math.random() * 2000;
+    }
+  } else {
+    if (state.animation.timeTillNextBlink <= 0) {
+      state.animation.isBlinking = true;
+      state.animation.timeTillNextBlink = 150; // Blink duration
+    }
+  }
+
   if (Input.keysJustPressed.has("q")) {
     state.curClassicIndex -= 1;
     if (state.curClassicIndex < 0) {
@@ -79,6 +96,8 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     // undo
     if (state.undoStack.length === 0) {
       playInvalidMoveSound();
+      state.animation.isBlinking = true;
+      state.animation.timeTillNextBlink = 150;
     } else {
       const lastState = state.undoStack.pop()!;
       state.level.dynamic = structuredClone(lastState);
@@ -314,31 +333,39 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.fill();
 
       {
-        // Check if eyes are blinking
-        const eyeScaleY = 0;
-
         ctx.save();
-        ctx.scale(1, eyeScaleY);
 
-        // Draw eye whites
-        ctx.fillStyle = "white";
-        ctx.beginPath();
-        ctx.arc(-0.2, -0.1 / eyeScaleY, 0.19, 0, Math.PI * 2);
-        ctx.arc(0.2, -0.1 / eyeScaleY, 0.19, 0, Math.PI * 2);
-        ctx.fill();
+        if (!state.animation.isBlinking) {
+          ctx.fillStyle = "white";
+          ctx.beginPath();
+          ctx.arc(-0.2, -0.1 / 1, 0.19, 0, Math.PI * 2);
+          ctx.arc(0.2, -0.1 / 1, 0.19, 0, Math.PI * 2);
+          ctx.fill();
 
-        // Draw eye pupils with looking animation
-        ctx.fillStyle = "black";
-        ctx.beginPath();
-        ctx.save();
-        ctx.translate(
-          state.animation.eyesLooking.x * 0.075,
-          state.animation.eyesLooking.y * 0.075,
-        );
-        ctx.arc(-0.2, -0.1, 0.075, 0, Math.PI * 2);
-        ctx.arc(0.2, -0.1, 0.075, 0, Math.PI * 2);
-        ctx.restore();
-        ctx.fill();
+          // Draw eye pupils with looking animation
+          ctx.fillStyle = "black";
+          ctx.beginPath();
+          ctx.save();
+          ctx.translate(
+            state.animation.eyesLooking.x * 0.075,
+            state.animation.eyesLooking.y * 0.075,
+          );
+          ctx.arc(-0.2, -0.1, 0.075, 0, Math.PI * 2);
+          ctx.arc(0.2, -0.1, 0.075, 0, Math.PI * 2);
+          ctx.restore();
+          ctx.fill();
+        } else {
+          // Draw closed eyes (simple lines)
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 0.04;
+          ctx.beginPath();
+          ctx.moveTo(-0.32, -0.1);
+          ctx.lineTo(-0.08, -0.1);
+          ctx.moveTo(0.08, -0.1);
+          ctx.lineTo(0.32, -0.1);
+          ctx.stroke();
+        }
+
         ctx.restore();
       }
 
@@ -449,6 +476,8 @@ function attemptMovePlayer(dx: number, dy: number) {
     state.animation.cameraOffset.y += -dy * 0.5;
     playInvalidMoveSound();
     state.animation.happinessTarget = 0.0;
+    state.animation.isBlinking = true;
+    state.animation.timeTillNextBlink = 150;
     return;
   }
 
