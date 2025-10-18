@@ -26,6 +26,7 @@ const keyRepeatInterval = 115;
 
 const initState = {
   level: classicLevels[0]!.level,
+  undoStack: [] as ReturnType<typeof generateLevel>["dynamic"][],
 
   curClassicIndex: 0,
 
@@ -41,22 +42,37 @@ const initState = {
 
 const state = structuredClone(initState);
 
+function loadLevel() {
+  state.level = classicLevels[state.curClassicIndex]!.level;
+  state.animation = structuredClone(initAnimation); // reset animation
+  state.undoStack = [];
+}
+
 export function tick(ctx: CanvasRenderingContext2D, dt: number) {
   if (Input.keysJustPressed.has("q")) {
     state.curClassicIndex -= 1;
     if (state.curClassicIndex < 0) {
       state.curClassicIndex = classicLevels.length - 1;
     }
-    state.level = classicLevels[state.curClassicIndex]!.level;
-    state.animation = structuredClone(initAnimation); // reset animation
+    loadLevel();
   }
   if (Input.keysJustPressed.has("e")) {
     state.curClassicIndex += 1;
     if (state.curClassicIndex >= classicLevels.length) {
       state.curClassicIndex = 0;
     }
-    state.level = classicLevels[state.curClassicIndex]!.level;
-    state.animation = structuredClone(initAnimation); // reset animation
+    loadLevel();
+  }
+
+  if (Input.keysJustPressed.has("z") || Input.keysJustPressed.has("u")) {
+    // undo
+    if (state.undoStack.length === 0) {
+      playInvalidMoveSound();
+    } else {
+      const lastState = state.undoStack.pop()!;
+      state.level.dynamic = structuredClone(lastState);
+      playStepSound();
+    }
   }
 
   state.animation.cameraOffset.x = lerp(
@@ -127,9 +143,6 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     state.keyRepeat.repeats = 0;
   }
 
-  if (Input.keysJustPressed.has("e")) {
-  }
-
   if (Input.keysJustPressed.has("r")) {
     // generate level
     state.level = generateLevel({
@@ -139,6 +152,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       generationMoves: 100,
     });
     state.animation = structuredClone(initAnimation); // reset animation
+    state.undoStack = [];
   }
 
   if (!state.animation.initialized) {
@@ -250,9 +264,20 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     // draw player
     {
       const player = state.animation.player;
-      ctx.fillStyle = "#eee";
+      ctx.fillStyle = "#FFA500";
       ctx.beginPath();
       ctx.arc(player.x + 0.5, player.y + 0.5, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      // eyes
+      ctx.fillStyle = "white";
+      ctx.beginPath();
+      ctx.arc(player.x + 0.3, player.y + 0.4, 0.2, 0, Math.PI * 2);
+      ctx.arc(player.x + 0.7, player.y + 0.4, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "black";
+      ctx.beginPath();
+      ctx.arc(player.x + 0.3, player.y + 0.4, 0.075, 0, Math.PI * 2);
+      ctx.arc(player.x + 0.7, player.y + 0.4, 0.075, 0, Math.PI * 2);
       ctx.fill();
     }
   });
@@ -273,6 +298,8 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
 }
 
 function attemptMovePlayer(dx: number, dy: number) {
+  const previousState = structuredClone(state.level.dynamic);
+
   const player = state.level.dynamic.player;
   const targetX = player.x + dx;
   const targetY = player.y + dy;
@@ -316,8 +343,8 @@ function attemptMovePlayer(dx: number, dy: number) {
   }
 
   if (invalid) {
-    state.animation.cameraOffset.x += state.camera.zoom * -dx * 0.005;
-    state.animation.cameraOffset.y += state.camera.zoom * -dy * 0.005;
+    state.animation.cameraOffset.x += -dx * 0.5;
+    state.animation.cameraOffset.y += -dy * 0.5;
     playInvalidMoveSound();
     return;
   }
@@ -327,6 +354,8 @@ function attemptMovePlayer(dx: number, dy: number) {
   player.y = targetY;
 
   playStepSound();
+
+  state.undoStack.push(previousState);
 }
 
 function lerp(a: number, b: number, t: number) {

@@ -1,7 +1,6 @@
 fun things to do:
 
 - improve base playing experience
-  - key repeat
   - undo
   - dust from movement?
 
