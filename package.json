@@ -7,7 +7,8 @@
     "dev": "bun src/index.html --console",
     "build": "bun build src/index.html --outdir=dist --minify",
     "preview": "bunx serve dist",
-    "generate": "bun run src/generator/generate.ts"
+    "generate-levels": "bun run src/generator/generate-top-levels.ts",
+    "generate-stone-specs": "bun run src/generator/generate-stone-specs.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

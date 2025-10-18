@@ -4,6 +4,7 @@ import {
   levelFromText,
   testLevel,
 } from "./sokoban";
+import stoneSpecs from "./generator/stone-specs.json";
 
 import * as Camera from "./camera";
 import * as Input from "./input";
@@ -39,7 +40,7 @@ const keyRepeatDelay = 250;
 const keyRepeatInterval = 115;
 
 const initState = {
-  level: classicLevels[0]!.level,
+  level: structuredClone(classicLevels[0]!.level),
   undoStack: [] as ReturnType<typeof generateLevel>["dynamic"][],
 
   curClassicIndex: 0,
@@ -55,6 +56,16 @@ const initState = {
 };
 
 const state = structuredClone(initState);
+
+// const stoneSpecs = [] as { x: number; y: number; size: number }[];
+// const stoneSpecCount = 8;
+// for (let i = 0; i < stoneSpecCount; i++) {
+//   stoneSpecs.push({
+//     x: Math.random(),
+//     y: Math.random(),
+//     size: Math.random() * 0.15 + 0.05,
+//   });
+// }
 
 function loadLevel() {
   state.level = classicLevels[state.curClassicIndex]!.level;
@@ -261,7 +272,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.canvas.getBoundingClientRect(),
       levelSize.width,
       levelSize.height,
-    ) * 0.9;
+    ) * 0.75;
   // draw sokoban
   Camera.drawWithCamera(ctx, state.camera, (ctx) => {
     ctx.translate(
@@ -302,6 +313,33 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     for (const wall of state.level.static.walls) {
       ctx.fillStyle = "gray";
       ctx.fillRect(wall.x, wall.y, 1, 1);
+
+      // draw specs inside wall with clip rect
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(wall.x, wall.y, 1, 1);
+      ctx.clip();
+      ctx.fillStyle = "darkgray";
+
+      for (const spec of stoneSpecs) {
+        for (const y of [-1, 0, 1]) {
+          for (const x of [-1, 0, 1]) {
+            ctx.beginPath();
+            ctx.ellipse(
+              wall.x + spec.x + x,
+              wall.y + spec.y + y,
+              spec.size,
+              spec.size,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            ctx.fill();
+          }
+        }
+      }
+
+      ctx.restore();
     }
     // draw goals
     ctx.strokeStyle = "yellow";
