@@ -313,22 +313,34 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.arc(0, 0, 0.5, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "white";
-      ctx.beginPath();
-      ctx.arc(player.x + 0.3, player.y + 0.4, 0.19, 0, Math.PI * 2);
-      ctx.arc(player.x + 0.7, player.y + 0.4, 0.19, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "black";
-      ctx.beginPath();
-      ctx.save();
-      ctx.translate(
-        state.animation.eyesLooking.x * 0.075,
-        state.animation.eyesLooking.y * 0.075,
-      );
-      ctx.arc(player.x + 0.3, player.y + 0.4, 0.075, 0, Math.PI * 2);
-      ctx.arc(player.x + 0.7, player.y + 0.4, 0.075, 0, Math.PI * 2);
-      ctx.restore();
-      ctx.fill();
+      {
+        // Check if eyes are blinking
+        const eyeScaleY = 0;
+
+        ctx.save();
+        ctx.scale(1, eyeScaleY);
+
+        // Draw eye whites
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.arc(-0.2, -0.1 / eyeScaleY, 0.19, 0, Math.PI * 2);
+        ctx.arc(0.2, -0.1 / eyeScaleY, 0.19, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw eye pupils with looking animation
+        ctx.fillStyle = "black";
+        ctx.beginPath();
+        ctx.save();
+        ctx.translate(
+          state.animation.eyesLooking.x * 0.075,
+          state.animation.eyesLooking.y * 0.075,
+        );
+        ctx.arc(-0.2, -0.1, 0.075, 0, Math.PI * 2);
+        ctx.arc(0.2, -0.1, 0.075, 0, Math.PI * 2);
+        ctx.restore();
+        ctx.fill();
+        ctx.restore();
+      }
 
       // mouth
       const happiness = state.animation.animatedHappines; // from 0 (sad) to 1 (happy)
@@ -336,19 +348,16 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.lineWidth = 0.05;
       ctx.beginPath();
       const mouthWidth = 0.3;
-      const mouthY = player.y + 0.675;
-      const mouthCenterX = player.x + 0.5;
+      const mouthY = 0.175;
       // Calculate curve amount based on happiness (negative = frown, positive = smile)
       const curveAmount = (happiness - 0.5) * 0.2;
 
-      ctx.moveTo(mouthCenterX - mouthWidth / 2, mouthY);
-      ctx.quadraticCurveTo(
-        mouthCenterX,
-        mouthY + curveAmount,
-        mouthCenterX + mouthWidth / 2,
-        mouthY,
-      );
+      ctx.moveTo(-mouthWidth / 2, mouthY);
+      ctx.quadraticCurveTo(0, mouthY + curveAmount, mouthWidth / 2, mouthY);
       ctx.stroke();
+
+      // Restore context (removes all transforms)
+      ctx.restore();
     }
   });
 
@@ -383,6 +392,16 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
 
 function attemptMovePlayer(dx: number, dy: number) {
   const previousState = structuredClone(state.level.dynamic);
+
+  const squashAmount = 0.33;
+  if (dx !== 0) {
+    state.animation.playerXScale *= 1 + squashAmount;
+    state.animation.playerYScale *= 1 - squashAmount;
+  }
+  if (dy !== 0) {
+    state.animation.playerYScale *= 1 + squashAmount;
+    state.animation.playerXScale *= 1 - squashAmount;
+  }
 
   const player = state.level.dynamic.player;
   const targetX = player.x + dx;
