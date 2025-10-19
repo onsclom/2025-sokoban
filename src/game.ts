@@ -634,6 +634,11 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       }
     }
 
+    const rect = ctx.canvas.getBoundingClientRect();
+    // lets do vh units
+    const vh = rect.height / 100;
+    const levelButtonSize = vh * 8;
+
     const selectedIndex =
       state.levelSelect.selectedY * levelsPerRow + state.levelSelect.selectedX;
 
@@ -646,11 +651,10 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     }
 
     ctx.fillStyle = "#99f";
-    const rect = ctx.canvas.getBoundingClientRect();
     ctx.fillRect(0, 0, rect.width, rect.height);
 
     // lets do 9 rows of 10 each?
-    const levelButtonSize = 60;
+    const shadowOffset = 0.4;
     for (let i = 0; i < levelAmount; i++) {
       const level = classicLevels[i]!;
       const row = Math.floor(i / levelsPerRow);
@@ -680,14 +684,14 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       // ctx.fillStyle = "white";
       // ctx.fillRect(x, y, levelButtonSize, levelButtonSize);
 
-      ctx.font = `25px sans-serif`;
+      ctx.font = `${vh * 4}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = "black";
       ctx.fillText(
         `${i + 1}`,
-        x + levelButtonSize / 2 + 2,
-        y + levelButtonSize / 2 + 2,
+        x + levelButtonSize / 2 + vh * shadowOffset,
+        y + levelButtonSize / 2 + vh * shadowOffset,
       );
       ctx.fillStyle = "white";
       ctx.fillText(
@@ -698,14 +702,18 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     }
 
     // show "choose level" text at top middle
-    const fontSize = 80;
+    const fontSize = vh * 10;
     ctx.font = `${fontSize}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillStyle = "black";
-    ctx.fillText("sokoban.xyz", rect.width / 2 + 3, 20 + 3);
+    ctx.fillText(
+      "sokoban.xyz",
+      rect.width / 2 + 3,
+      fontSize * 0.5 + shadowOffset * vh,
+    );
     ctx.fillStyle = "white";
-    ctx.fillText("sokoban.xyz", rect.width / 2, 20);
+    ctx.fillText("sokoban.xyz", rect.width / 2, fontSize * 0.5);
   }
 
   Input.resetInput();
