@@ -32,6 +32,7 @@ const initAnimation = {
   animatedHappines: 0.5,
 
   undoTransparency: 0,
+  winTransparency: 0,
 
   timeTillNextBlink: 3000 + Math.random() * 2000, // 3-5 seconds initially
   isBlinking: false,
@@ -90,6 +91,8 @@ function loadLevel() {
 }
 
 function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
+  const vh = ctx.canvas.getBoundingClientRect().height / 100;
+
   state.animation.timeTillNextBlink -= dt;
 
   if (state.animation.isBlinking) {
@@ -204,10 +207,10 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
     if (Input.keysJustPressed.has("g")) {
       // generate new level
       state.level = generateLevel({
-        width: 30,
-        height: 20,
-        boxAmount: 10,
-        generationMoves: 1000,
+        width: 5,
+        height: 5,
+        boxAmount: 1,
+        generationMoves: 1,
       });
       state.animation = structuredClone(initAnimation); // reset animation
       state.undoStack = [];
@@ -294,7 +297,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
 
   ctx.fillStyle = "black";
   const levelName = classicLevels[state.curClassicIndex]!.name;
-  const fontSize = 60;
+  const fontSize = vh * 5;
   ctx.font = `${fontSize}px sans-serif`;
   ctx.textAlign = "center";
 
@@ -303,7 +306,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.globalAlpha = state.animation.undoTransparency;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const fontSize = 100;
+    const fontSize = vh * 10;
     ctx.font = `${fontSize}px sans-serif`;
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     ctx.fillRect(0, 0, rect.width, rect.height);
@@ -312,6 +315,54 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.globalAlpha = 1;
   }
 
+  {
+    // you win text
+    const allBoxesOnGoals = state.level.dynamic.boxes.every((box) =>
+      state.level.static.goals.some(
+        (goal) => goal.x === box.x && goal.y === box.y,
+      ),
+    );
+    state.animation.winTransparency = lerp(
+      state.animation.winTransparency,
+      allBoxesOnGoals ? 1 : 0,
+      1 - Math.exp(-animationSpeed * dt),
+    );
+    if (allBoxesOnGoals) {
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.globalAlpha = state.animation.winTransparency;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.fillRect(0, 0, rect.width, rect.height);
+      ctx.translate(rect.width / 2, rect.height / 2);
+      const fontSize = vh * 10;
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.rotate(-0.05 * Math.sin(performance.now() * 0.005));
+      ctx.fillStyle = "black";
+      ctx.fillText("YOU WIN!", 0 + 3, 0 + 3);
+      ctx.fillStyle = "white";
+      ctx.fillText("YOU WIN!", 0, 0);
+      ctx.restore();
+
+      const subFontSize = vh * 2.5;
+      // at bottom of screen say "E for next level, R to restart"
+      ctx.font = `${subFontSize}px sans-serif`;
+      ctx.fillStyle = "black";
+      ctx.fillText(
+        "E for next level, R to restart",
+        rect.width / 2 + 3,
+        rect.height - subFontSize + 3,
+      );
+      ctx.fillStyle = "white";
+      ctx.fillText(
+        "E for next level, R to restart",
+        rect.width / 2,
+        rect.height - subFontSize,
+      );
+    }
+  }
+
+  ctx.font = `${fontSize}px sans-serif`;
   ctx.fillStyle = "black";
   const offset = 3;
   ctx.fillText(`${levelName}`, rect.width / 2 + offset, fontSize + offset);
@@ -610,6 +661,10 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
   if (state.currentState === "in-level") {
     inLevelStuff(ctx, dt);
   } else if (state.currentState === "level-select") {
+    const rect = ctx.canvas.getBoundingClientRect();
+    // lets do vh units
+    const vh = rect.height / 100;
+
     const levelsPerRow = 10;
     const levelAmount = classicLevels.length;
     const rowAmount = Math.ceil(levelAmount / levelsPerRow);
@@ -652,9 +707,6 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       }
     }
 
-    const rect = ctx.canvas.getBoundingClientRect();
-    // lets do vh units
-    const vh = rect.height / 100;
     const levelButtonSize = vh * 8;
 
     const selectedIndex =
