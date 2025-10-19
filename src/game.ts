@@ -44,7 +44,9 @@ const initState = {
   currentState: "level-select" as "level-select" | "in-level",
   levelSelect: {
     selectedX: 0,
+    animatedX: 0,
     selectedY: 0,
+    animatedY: 0,
   },
 
   level: structuredClone(classicLevels[0]!.level),
@@ -668,6 +670,34 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.fillRect(0, 0, rect.width, rect.height);
     ctx.globalAlpha = 1;
 
+    state.levelSelect.animatedX = lerp(
+      state.levelSelect.animatedX,
+      state.levelSelect.selectedX,
+      1 - Math.exp(-animationSpeed * dt),
+    );
+    state.levelSelect.animatedY = lerp(
+      state.levelSelect.animatedY,
+      state.levelSelect.selectedY,
+      1 - Math.exp(-animationSpeed * dt),
+    );
+    // draw the yellow circle here
+    ctx.fillStyle = "rgba(255, 255, 0, 0.8)";
+    ctx.beginPath();
+    ctx.arc(
+      rect.width / 2 -
+        (levelsPerRow * levelButtonSize) / 2 +
+        state.levelSelect.animatedX * levelButtonSize +
+        levelButtonSize / 2,
+      rect.height / 2 -
+        (rowAmount * levelButtonSize) / 2 +
+        state.levelSelect.animatedY * levelButtonSize +
+        levelButtonSize / 2,
+      levelButtonSize / 2,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+
     // lets do 9 rows of 10 each?
     const shadowOffset = 0.4;
     for (let i = 0; i < levelAmount; i++) {
@@ -683,52 +713,48 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
         (rowAmount * levelButtonSize) / 2 +
         row * levelButtonSize;
 
-      if (i === selectedIndex) {
-        ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
-        ctx.beginPath();
-        ctx.arc(
-          x + levelButtonSize / 2,
-          y + levelButtonSize / 2,
-          levelButtonSize / 2 + 8,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
-      }
-
-      // ctx.fillStyle = "white";
-      // ctx.fillRect(x, y, levelButtonSize, levelButtonSize);
+      const selectedIndex =
+        state.levelSelect.selectedY * levelsPerRow +
+        state.levelSelect.selectedX;
 
       ctx.font = `${vh * 4}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = "black";
-      ctx.fillText(
-        `${i + 1}`,
-        x + levelButtonSize / 2 + vh * shadowOffset,
-        y + levelButtonSize / 2 + vh * shadowOffset,
-      );
-      ctx.fillStyle = "white";
-      ctx.fillText(
-        `${i + 1}`,
+      ctx.save();
+      ctx.translate(
         x + levelButtonSize / 2,
-        y + levelButtonSize / 2,
+        y +
+          levelButtonSize / 2 +
+          Math.sin(performance.now() * 0.003 + (x + y) * 0.1) * vh * 0.4,
       );
+      ctx.fillStyle = "black";
+      ctx.fillText(`${i + 1}`, vh * shadowOffset, vh * shadowOffset);
+
+      ctx.fillStyle = "white";
+      ctx.fillText(`${i + 1}`, 0, 0);
+      ctx.restore();
     }
 
     // show "choose level" text at top middle
     const fontSize = vh * 10;
     ctx.font = `${fontSize}px sans-serif`;
     ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = "black";
-    ctx.fillText(
-      "sokoban.xyz",
-      rect.width / 2 + 3,
-      fontSize * 0.5 + shadowOffset * vh,
+    ctx.textBaseline = "middle";
+
+    ctx.save();
+    ctx.translate(
+      rect.width / 2,
+      fontSize * 0.6 + Math.sin(performance.now() * 0.003) * vh * 0.1,
     );
+    ctx.rotate(Math.sin(performance.now() * 0.002) * 0.03);
+
+    ctx.fillStyle = "black";
+    ctx.fillText("sokoban.xyz", 3, shadowOffset * vh);
     ctx.fillStyle = "white";
-    ctx.fillText("sokoban.xyz", rect.width / 2, fontSize * 0.5);
+    ctx.fillText("sokoban.xyz", 0, 0);
+
+    ctx.restore();
   }
 
   Input.resetInput();
