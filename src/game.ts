@@ -11,84 +11,7 @@ import { classicLevels } from "./levels/parse-levels";
 // Cached textures for performance
 let cachedGrassTexture: HTMLCanvasElement | null = null;
 let cachedStoneTexture: HTMLCanvasElement | null = null;
-
-function createGrassTexture(): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = 100; // 100px will be scaled down to 1 unit
-  canvas.height = 100;
-  const ctx = canvas.getContext("2d")!;
-
-  // Fill base green color
-  ctx.fillStyle = "green";
-  ctx.fillRect(0, 0, 100, 100);
-  ctx.fillStyle = "#090";
-
-  // Draw grass specs
-  for (const spec of grassSpecs) {
-    for (const y of [-1, 0, 1]) {
-      for (const x of [-1, 0, 1]) {
-        // each spec is a triangle which fits in the spec circle
-        ctx.beginPath();
-        const angle = (Math.PI * 2) / 3;
-        ctx.moveTo(
-          (spec.x + x) * 100 +
-            spec.size * 100 * Math.cos(angle * 0 - Math.PI / 2),
-          (spec.y + y) * 100 +
-            spec.size * 100 * Math.sin(angle * 0 - Math.PI / 2),
-        );
-        ctx.lineTo(
-          (spec.x + x) * 100 +
-            spec.size * 100 * Math.cos(angle * 1 - Math.PI / 2),
-          (spec.y + y) * 100 +
-            spec.size * 100 * Math.sin(angle * 1 - Math.PI / 2),
-        );
-        ctx.lineTo(
-          (spec.x + x) * 100 +
-            spec.size * 100 * Math.cos(angle * 2 - Math.PI / 2),
-          (spec.y + y) * 100 +
-            spec.size * 100 * Math.sin(angle * 2 - Math.PI / 2),
-        );
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-  }
-
-  return canvas;
-}
-
-function createStoneTexture(): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = 100; // 100px will be scaled down to 1 unit
-  canvas.height = 100;
-  const ctx = canvas.getContext("2d")!;
-
-  // Fill base gray color
-  ctx.fillStyle = "gray";
-  ctx.fillRect(0, 0, 100, 100);
-  ctx.fillStyle = "darkgray";
-
-  // Draw stone specs
-  for (const spec of stoneSpecs) {
-    for (const y of [-1, 0, 1]) {
-      for (const x of [-1, 0, 1]) {
-        ctx.beginPath();
-        ctx.ellipse(
-          (spec.x + x) * 100,
-          (spec.y + y) * 100,
-          spec.size * 100,
-          spec.size * 100,
-          0,
-          0,
-          Math.PI * 2,
-        );
-        ctx.fill();
-      }
-    }
-  }
-
-  return canvas;
-}
+const edgeRemover = 0.0025;
 
 // sokoban
 const animationSpeed = 0.02;
@@ -118,6 +41,12 @@ const keyRepeatDelay = 250;
 const keyRepeatInterval = 115;
 
 const initState = {
+  currentState: "level-select" as "level-select" | "in-level",
+  levelSelect: {
+    selectedX: 0,
+    selectedY: 0,
+  },
+
   level: structuredClone(classicLevels[0]!.level),
   undoStack: [] as ReturnType<typeof generateLevel>["dynamic"][],
 
@@ -131,6 +60,12 @@ const initState = {
     timeHeld: 0,
     repeats: 0,
   },
+
+  pauseMenu: {
+    selectedIndex: 0,
+    options: ["restart level", "back to level select"] as const,
+    isPaused: false,
+  },
 };
 
 const state = structuredClone(initState);
@@ -141,15 +76,7 @@ function loadLevel() {
   state.undoStack = [];
 }
 
-export function tick(ctx: CanvasRenderingContext2D, dt: number) {
-  // Initialize cached textures on first tick
-  if (!cachedGrassTexture) {
-    cachedGrassTexture = createGrassTexture();
-  }
-  if (!cachedStoneTexture) {
-    cachedStoneTexture = createStoneTexture();
-  }
-
+function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
   state.animation.timeTillNextBlink -= dt;
 
   if (state.animation.isBlinking) {
@@ -164,33 +91,113 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     }
   }
 
-  if (Input.keysJustPressed.has("q")) {
-    state.curClassicIndex -= 1;
-    if (state.curClassicIndex < 0) {
-      state.curClassicIndex = classicLevels.length - 1;
-    }
-    loadLevel();
-  }
-  if (Input.keysJustPressed.has("e")) {
-    state.curClassicIndex += 1;
-    if (state.curClassicIndex >= classicLevels.length) {
-      state.curClassicIndex = 0;
-    }
-    loadLevel();
+  if (Input.keysJustPressed.has("Escape")) {
+    state.pauseMenu.isPaused = !state.pauseMenu.isPaused;
   }
 
-  if (Input.keysJustPressed.has("z") || Input.keysJustPressed.has("u")) {
-    // undo
-    if (state.undoStack.length === 0) {
-      playInvalidMoveSound();
-      state.animation.isBlinking = true;
-      state.animation.timeTillNextBlink = 150;
+  if (!state.pauseMenu.isPaused) {
+    if (Input.keysJustPressed.has("q")) {
+      state.curClassicIndex -= 1;
+      if (state.curClassicIndex < 0) {
+        state.curClassicIndex = classicLevels.length - 1;
+      }
+      loadLevel();
+    }
+    if (Input.keysJustPressed.has("e")) {
+      state.curClassicIndex += 1;
+      if (state.curClassicIndex >= classicLevels.length) {
+        state.curClassicIndex = 0;
+      }
+      loadLevel();
+    }
+
+    if (Input.keysJustPressed.has("z") || Input.keysJustPressed.has("u")) {
+      // undo
+      if (state.undoStack.length === 0) {
+        playInvalidMoveSound();
+        state.animation.isBlinking = true;
+        state.animation.timeTillNextBlink = 150;
+      } else {
+        const lastState = state.undoStack.pop()!;
+        state.level.dynamic = structuredClone(lastState);
+        playStepSound();
+        state.animation.happinessTarget = 0.5;
+        state.animation.undoTransparency = 1.0;
+      }
+    }
+
+    if (
+      Input.keysJustPressed.has("d") ||
+      Input.keysJustPressed.has("ArrowRight")
+    ) {
+      attemptMovePlayer(1, 0);
+    } else if (
+      Input.keysJustPressed.has("a") ||
+      Input.keysJustPressed.has("ArrowLeft")
+    ) {
+      attemptMovePlayer(-1, 0);
+    } else if (
+      Input.keysJustPressed.has("w") ||
+      Input.keysJustPressed.has("ArrowUp")
+    ) {
+      attemptMovePlayer(0, -1);
+    } else if (
+      Input.keysJustPressed.has("s") ||
+      Input.keysJustPressed.has("ArrowDown")
+    ) {
+      attemptMovePlayer(0, 1);
+    }
+
+    // handle keyRepeat here
+    const curDir = { x: 0, y: 0 };
+    if (Input.keysDown.has("d") || Input.keysDown.has("ArrowRight")) {
+      curDir.x = 1;
+    } else if (Input.keysDown.has("a") || Input.keysDown.has("ArrowLeft")) {
+      curDir.x = -1;
+    } else if (Input.keysDown.has("w") || Input.keysDown.has("ArrowUp")) {
+      curDir.y = -1;
+    } else if (Input.keysDown.has("s") || Input.keysDown.has("ArrowDown")) {
+      curDir.y = 1;
+    }
+    if (
+      curDir.x === state.keyRepeat.lastDir.x &&
+      curDir.y === state.keyRepeat.lastDir.y &&
+      (curDir.x !== 0 || curDir.y !== 0)
+    ) {
+      state.keyRepeat.timeHeld += dt;
+      if (state.keyRepeat.timeHeld >= keyRepeatDelay) {
+        const oldRepeats = state.keyRepeat.repeats;
+        const newRepeats = Math.max(
+          0,
+          (state.keyRepeat.timeHeld - keyRepeatDelay) / keyRepeatInterval,
+        );
+        state.keyRepeat.repeats = Math.floor(newRepeats);
+        if (oldRepeats !== state.keyRepeat.repeats) {
+          attemptMovePlayer(curDir.x, curDir.y);
+        }
+      }
     } else {
-      const lastState = state.undoStack.pop()!;
-      state.level.dynamic = structuredClone(lastState);
-      playStepSound();
-      state.animation.happinessTarget = 0.5;
-      state.animation.undoTransparency = 1.0;
+      // new direction or no direction
+      state.keyRepeat.lastDir = curDir;
+      state.keyRepeat.timeHeld = 0;
+      state.keyRepeat.repeats = 0;
+    }
+
+    if (Input.keysJustPressed.has("r")) {
+      // restart level
+      loadLevel();
+    }
+
+    if (Input.keysJustPressed.has("g")) {
+      // generate new level
+      state.level = generateLevel({
+        width: 30,
+        height: 20,
+        boxAmount: 10,
+        generationMoves: 1000,
+      });
+      state.animation = structuredClone(initAnimation); // reset animation
+      state.undoStack = [];
     }
   }
 
@@ -236,68 +243,6 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       0,
       state.animation.undoTransparency,
     );
-  }
-
-  if (
-    Input.keysJustPressed.has("d") ||
-    Input.keysJustPressed.has("ArrowRight")
-  ) {
-    attemptMovePlayer(1, 0);
-  } else if (
-    Input.keysJustPressed.has("a") ||
-    Input.keysJustPressed.has("ArrowLeft")
-  ) {
-    attemptMovePlayer(-1, 0);
-  } else if (
-    Input.keysJustPressed.has("w") ||
-    Input.keysJustPressed.has("ArrowUp")
-  ) {
-    attemptMovePlayer(0, -1);
-  } else if (
-    Input.keysJustPressed.has("s") ||
-    Input.keysJustPressed.has("ArrowDown")
-  ) {
-    attemptMovePlayer(0, 1);
-  }
-
-  // handle keyRepeat here
-  const curDir = { x: 0, y: 0 };
-  if (Input.keysDown.has("d") || Input.keysDown.has("ArrowRight")) {
-    curDir.x = 1;
-  } else if (Input.keysDown.has("a") || Input.keysDown.has("ArrowLeft")) {
-    curDir.x = -1;
-  } else if (Input.keysDown.has("w") || Input.keysDown.has("ArrowUp")) {
-    curDir.y = -1;
-  } else if (Input.keysDown.has("s") || Input.keysDown.has("ArrowDown")) {
-    curDir.y = 1;
-  }
-  if (
-    curDir.x === state.keyRepeat.lastDir.x &&
-    curDir.y === state.keyRepeat.lastDir.y &&
-    (curDir.x !== 0 || curDir.y !== 0)
-  ) {
-    state.keyRepeat.timeHeld += dt;
-    if (state.keyRepeat.timeHeld >= keyRepeatDelay) {
-      const oldRepeats = state.keyRepeat.repeats;
-      const newRepeats = Math.max(
-        0,
-        (state.keyRepeat.timeHeld - keyRepeatDelay) / keyRepeatInterval,
-      );
-      state.keyRepeat.repeats = Math.floor(newRepeats);
-      if (oldRepeats !== state.keyRepeat.repeats) {
-        attemptMovePlayer(curDir.x, curDir.y);
-      }
-    }
-  } else {
-    // new direction or no direction
-    state.keyRepeat.lastDir = curDir;
-    state.keyRepeat.timeHeld = 0;
-    state.keyRepeat.repeats = 0;
-  }
-
-  if (Input.keysJustPressed.has("r")) {
-    // restart level
-    loadLevel();
   }
 
   if (!state.animation.initialized) {
@@ -348,7 +293,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.canvas.getBoundingClientRect(),
       levelSize.width,
       levelSize.height,
-    ) * 0.75;
+    ) * 0.85;
   // draw sokoban
   Camera.drawWithCamera(ctx, state.camera, (ctx) => {
     ctx.translate(
@@ -363,24 +308,46 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     for (const floor of state.level.static.floors) {
       if (cachedGrassTexture) {
         ctx.save();
-        ctx.translate(floor.x, floor.y);
+        ctx.translate(floor.x - edgeRemover, floor.y - edgeRemover);
         ctx.scale(0.01, 0.01); // Scale down from 100px to 1 unit
-        ctx.drawImage(cachedGrassTexture, 0, 0);
+        ctx.drawImage(
+          cachedGrassTexture,
+          0,
+          0,
+          100 + 2 * edgeRemover * 100,
+          100 + 2 * edgeRemover * 100,
+        );
         ctx.restore();
       } else {
         // Fallback to simple green if texture not loaded
         ctx.fillStyle = "green";
-        ctx.fillRect(floor.x, floor.y, 1, 1);
+        const edgeRemover = 0.01;
+        ctx.fillRect(
+          floor.x - edgeRemover,
+          floor.y - edgeRemover,
+          1 + 2 * edgeRemover,
+          1 + 2 * edgeRemover,
+        );
       }
     }
     {
       const shadowOffset = 0.1;
-      ctx.fillStyle = "rgba(0, 0, 0, .75)";
+      ctx.fillStyle = "rgba(0, 0, 0, 1)";
       for (const wall of state.level.static.walls) {
-        ctx.fillRect(wall.x + shadowOffset, wall.y + shadowOffset, 1, 1);
+        ctx.fillRect(
+          wall.x + shadowOffset - edgeRemover,
+          wall.y + shadowOffset - edgeRemover,
+          1 + 2 * edgeRemover,
+          1 + 2 * edgeRemover,
+        );
       }
       for (const box of state.animation.boxes) {
-        ctx.fillRect(box.x + shadowOffset, box.y + shadowOffset, 1, 1);
+        ctx.fillRect(
+          box.x + shadowOffset - edgeRemover,
+          box.y + shadowOffset - edgeRemover,
+          1 + 2 * edgeRemover,
+          1 + 2 * edgeRemover,
+        );
       }
       const player = state.animation.player;
       ctx.save();
@@ -398,9 +365,15 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     for (const wall of state.level.static.walls) {
       if (cachedStoneTexture) {
         ctx.save();
-        ctx.translate(wall.x, wall.y);
+        ctx.translate(wall.x - edgeRemover, wall.y - edgeRemover);
         ctx.scale(0.01, 0.01); // Scale down from 100px to 1 unit
-        ctx.drawImage(cachedStoneTexture, 0, 0);
+        ctx.drawImage(
+          cachedStoneTexture,
+          0,
+          0,
+          100 + 2 * edgeRemover * 100,
+          100 + 2 * edgeRemover * 100,
+        );
         ctx.restore();
       } else {
         // Fallback to simple gray if texture not loaded
@@ -549,6 +522,192 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
   ctx.fillStyle = "white";
   ctx.fillText(`${levelName}`, rect.width / 2, fontSize);
 
+  // PAUSE MENU JUICE
+  if (state.pauseMenu.isPaused) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    const menuFontSize = 80;
+    ctx.font = `${menuFontSize}px sans-serif`;
+
+    // handle input here
+    if (
+      Input.keysJustPressed.has("ArrowUp") ||
+      Input.keysJustPressed.has("w")
+    ) {
+      state.pauseMenu.selectedIndex -= 1;
+      if (state.pauseMenu.selectedIndex < 0)
+        state.pauseMenu.selectedIndex = state.pauseMenu.options.length - 1;
+    }
+    if (
+      Input.keysJustPressed.has("ArrowDown") ||
+      Input.keysJustPressed.has("s")
+    ) {
+      state.pauseMenu.selectedIndex += 1;
+      if (state.pauseMenu.selectedIndex >= state.pauseMenu.options.length)
+        state.pauseMenu.selectedIndex = 0;
+    }
+
+    if (Input.keysJustPressed.has("Enter")) {
+      const selectedOption =
+        state.pauseMenu.options[state.pauseMenu.selectedIndex]!;
+      switch (selectedOption) {
+        case "restart level":
+          loadLevel();
+          state.pauseMenu.isPaused = false;
+          break;
+        case "back to level select":
+          state.currentState = "level-select";
+          state.pauseMenu.isPaused = false;
+          break;
+      }
+    }
+
+    // draw options centered on screen
+    for (let i = 0; i < state.pauseMenu.options.length; i++) {
+      const option = state.pauseMenu.options[i]!;
+      const textY =
+        rect.height / 2 +
+        (i - (state.pauseMenu.options.length - 1) / 2) * (menuFontSize + 20);
+      if (i === state.pauseMenu.selectedIndex) {
+        ctx.fillStyle = "yellow";
+        ctx.fillText(`> ${option} <`, rect.width / 2, textY);
+      } else {
+        ctx.fillStyle = "white";
+        ctx.fillText(option, rect.width / 2, textY);
+      }
+    }
+  }
+}
+
+export function tick(ctx: CanvasRenderingContext2D, dt: number) {
+  // Initialize cached textures on first tick
+  if (!cachedGrassTexture) {
+    cachedGrassTexture = createGrassTexture();
+  }
+  if (!cachedStoneTexture) {
+    cachedStoneTexture = createStoneTexture();
+  }
+
+  if (state.currentState === "in-level") {
+    inLevelStuff(ctx, dt);
+  } else if (state.currentState === "level-select") {
+    const levelsPerRow = 10;
+    const levelAmount = classicLevels.length;
+    const rowAmount = Math.ceil(levelAmount / levelsPerRow);
+
+    // handle input
+    if (
+      Input.keysJustPressed.has("ArrowUp") ||
+      Input.keysJustPressed.has("w")
+    ) {
+      state.levelSelect.selectedY -= 1;
+      if (state.levelSelect.selectedY < 0) {
+        state.levelSelect.selectedY = rowAmount - 1;
+      }
+    }
+    if (
+      Input.keysJustPressed.has("ArrowDown") ||
+      Input.keysJustPressed.has("s")
+    ) {
+      state.levelSelect.selectedY += 1;
+      if (state.levelSelect.selectedY >= rowAmount) {
+        state.levelSelect.selectedY = 0;
+      }
+    }
+    if (
+      Input.keysJustPressed.has("ArrowLeft") ||
+      Input.keysJustPressed.has("a")
+    ) {
+      state.levelSelect.selectedX -= 1;
+      if (state.levelSelect.selectedX < 0) {
+        state.levelSelect.selectedX = levelsPerRow - 1;
+      }
+    }
+    if (
+      Input.keysJustPressed.has("ArrowRight") ||
+      Input.keysJustPressed.has("d")
+    ) {
+      state.levelSelect.selectedX += 1;
+      if (state.levelSelect.selectedX >= levelsPerRow) {
+        state.levelSelect.selectedX = 0;
+      }
+    }
+
+    const selectedIndex =
+      state.levelSelect.selectedY * levelsPerRow + state.levelSelect.selectedX;
+
+    if (Input.keysJustPressed.has("Enter")) {
+      if (selectedIndex < classicLevels.length) {
+        state.curClassicIndex = selectedIndex;
+        loadLevel();
+        state.currentState = "in-level";
+      }
+    }
+
+    ctx.fillStyle = "#99f";
+    const rect = ctx.canvas.getBoundingClientRect();
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    // lets do 9 rows of 10 each?
+    const levelButtonSize = 60;
+    for (let i = 0; i < levelAmount; i++) {
+      const level = classicLevels[i]!;
+      const row = Math.floor(i / levelsPerRow);
+      const col = i % levelsPerRow;
+      const x =
+        rect.width / 2 -
+        (levelsPerRow * levelButtonSize) / 2 +
+        col * levelButtonSize;
+      const y =
+        rect.height / 2 -
+        (rowAmount * levelButtonSize) / 2 +
+        row * levelButtonSize;
+
+      if (i === selectedIndex) {
+        ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
+        ctx.beginPath();
+        ctx.arc(
+          x + levelButtonSize / 2,
+          y + levelButtonSize / 2,
+          levelButtonSize / 2 + 8,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+
+      // ctx.fillStyle = "white";
+      // ctx.fillRect(x, y, levelButtonSize, levelButtonSize);
+
+      ctx.font = `25px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "black";
+      ctx.fillText(
+        `${i + 1}`,
+        x + levelButtonSize / 2 + 2,
+        y + levelButtonSize / 2 + 2,
+      );
+      ctx.fillStyle = "white";
+      ctx.fillText(
+        `${i + 1}`,
+        x + levelButtonSize / 2,
+        y + levelButtonSize / 2,
+      );
+    }
+
+    // show "choose level" text at top middle
+    const fontSize = 80;
+    ctx.font = `${fontSize}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "black";
+    ctx.fillText("sokoban.xyz", rect.width / 2 + 3, 20 + 3);
+    ctx.fillStyle = "white";
+    ctx.fillText("sokoban.xyz", rect.width / 2, 20);
+  }
+
   Input.resetInput();
 }
 
@@ -641,4 +800,82 @@ function attemptMovePlayer(dx: number, dy: number) {
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
+}
+
+function createGrassTexture(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 100; // 100px will be scaled down to 1 unit
+  canvas.height = 100;
+  const ctx = canvas.getContext("2d")!;
+
+  // Fill base green color
+  ctx.fillStyle = "green";
+  ctx.fillRect(0, 0, 100, 100);
+  ctx.fillStyle = "#090";
+
+  // Draw grass specs
+  for (const spec of grassSpecs) {
+    for (const y of [-1, 0, 1]) {
+      for (const x of [-1, 0, 1]) {
+        // each spec is a triangle which fits in the spec circle
+        ctx.beginPath();
+        const angle = (Math.PI * 2) / 3;
+        ctx.moveTo(
+          (spec.x + x) * 100 +
+            spec.size * 100 * Math.cos(angle * 0 - Math.PI / 2),
+          (spec.y + y) * 100 +
+            spec.size * 100 * Math.sin(angle * 0 - Math.PI / 2),
+        );
+        ctx.lineTo(
+          (spec.x + x) * 100 +
+            spec.size * 100 * Math.cos(angle * 1 - Math.PI / 2),
+          (spec.y + y) * 100 +
+            spec.size * 100 * Math.sin(angle * 1 - Math.PI / 2),
+        );
+        ctx.lineTo(
+          (spec.x + x) * 100 +
+            spec.size * 100 * Math.cos(angle * 2 - Math.PI / 2),
+          (spec.y + y) * 100 +
+            spec.size * 100 * Math.sin(angle * 2 - Math.PI / 2),
+        );
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  return canvas;
+}
+
+function createStoneTexture(): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 100; // 100px will be scaled down to 1 unit
+  canvas.height = 100;
+  const ctx = canvas.getContext("2d")!;
+
+  // Fill base gray color
+  ctx.fillStyle = "gray";
+  ctx.fillRect(0, 0, 100, 100);
+  ctx.fillStyle = "darkgray";
+
+  // Draw stone specs
+  for (const spec of stoneSpecs) {
+    for (const y of [-1, 0, 1]) {
+      for (const x of [-1, 0, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(
+          (spec.x + x) * 100,
+          (spec.y + y) * 100,
+          spec.size * 100,
+          spec.size * 100,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
+    }
+  }
+
+  return canvas;
 }
