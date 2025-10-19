@@ -73,6 +73,17 @@ const state = structuredClone(initState);
 function loadLevel() {
   state.level = structuredClone(classicLevels[state.curClassicIndex]!.level);
   state.animation = structuredClone(initAnimation); // reset animation
+  // init animations
+
+  state.animation.initialized = true;
+  state.animation.player.x = state.level.dynamic.player.x;
+  state.animation.player.y = state.level.dynamic.player.y;
+  state.animation.boxes = state.level.dynamic.boxes.map((box) => ({
+    x: box.x,
+    y: box.y,
+    tint: 0,
+  }));
+
   state.undoStack = [];
 }
 
@@ -245,16 +256,6 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
     );
   }
 
-  if (!state.animation.initialized) {
-    state.animation.initialized = true;
-    state.animation.player.x = state.level.dynamic.player.x;
-    state.animation.player.y = state.level.dynamic.player.y;
-    state.animation.boxes = state.level.dynamic.boxes.map((box) => ({
-      x: box.x,
-      y: box.y,
-      tint: 0,
-    }));
-  }
   {
     // animate things
     for (let i = 0; i < state.animation.boxes.length; i++) {
@@ -287,13 +288,98 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
   ctx.fillStyle = "#99f";
   const rect = ctx.canvas.getBoundingClientRect();
   ctx.fillRect(0, 0, rect.width, rect.height);
+  drawSokobanLevel(ctx);
+
+  ctx.fillStyle = "black";
+  const levelName = classicLevels[state.curClassicIndex]!.name;
+  const fontSize = 60;
+  ctx.font = `${fontSize}px sans-serif`;
+  ctx.textAlign = "center";
+
+  {
+    // undo text
+    ctx.globalAlpha = state.animation.undoTransparency;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const fontSize = 100;
+    ctx.font = `${fontSize}px sans-serif`;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    ctx.fillStyle = "#f22";
+    ctx.fillText("UNDO", rect.width / 2, rect.height - fontSize);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.fillStyle = "black";
+  const offset = 3;
+  ctx.fillText(`${levelName}`, rect.width / 2 + offset, fontSize + offset);
+  ctx.fillStyle = "white";
+  ctx.fillText(`${levelName}`, rect.width / 2, fontSize);
+
+  // PAUSE MENU JUICE
+  if (state.pauseMenu.isPaused) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    const menuFontSize = 80;
+    ctx.font = `${menuFontSize}px sans-serif`;
+
+    // handle input here
+    if (
+      Input.keysJustPressed.has("ArrowUp") ||
+      Input.keysJustPressed.has("w")
+    ) {
+      state.pauseMenu.selectedIndex -= 1;
+      if (state.pauseMenu.selectedIndex < 0)
+        state.pauseMenu.selectedIndex = state.pauseMenu.options.length - 1;
+    }
+    if (
+      Input.keysJustPressed.has("ArrowDown") ||
+      Input.keysJustPressed.has("s")
+    ) {
+      state.pauseMenu.selectedIndex += 1;
+      if (state.pauseMenu.selectedIndex >= state.pauseMenu.options.length)
+        state.pauseMenu.selectedIndex = 0;
+    }
+
+    if (Input.keysJustPressed.has("Enter") || Input.keysJustPressed.has(" ")) {
+      const selectedOption =
+        state.pauseMenu.options[state.pauseMenu.selectedIndex]!;
+      switch (selectedOption) {
+        case "restart level":
+          loadLevel();
+          state.pauseMenu.isPaused = false;
+          break;
+        case "back to level select":
+          state.currentState = "level-select";
+          state.pauseMenu.isPaused = false;
+          break;
+      }
+    }
+
+    // draw options centered on screen
+    for (let i = 0; i < state.pauseMenu.options.length; i++) {
+      const option = state.pauseMenu.options[i]!;
+      const textY =
+        rect.height / 2 +
+        (i - (state.pauseMenu.options.length - 1) / 2) * (menuFontSize + 20);
+      if (i === state.pauseMenu.selectedIndex) {
+        ctx.fillStyle = "yellow";
+        ctx.fillText(`> ${option} <`, rect.width / 2, textY);
+      } else {
+        ctx.fillStyle = "white";
+        ctx.fillText(option, rect.width / 2, textY);
+      }
+    }
+  }
+}
+
+function drawSokobanLevel(ctx: CanvasRenderingContext2D, rect?: DOMRect) {
   const levelSize = levelDimensions(state.level);
+  const canvasRect = rect || ctx.canvas.getBoundingClientRect();
   state.camera.zoom =
-    Camera.aspectFitZoom(
-      ctx.canvas.getBoundingClientRect(),
-      levelSize.width,
-      levelSize.height,
-    ) * 0.85;
+    Camera.aspectFitZoom(canvasRect, levelSize.width, levelSize.height) * 0.85;
+
   // draw sokoban
   Camera.drawWithCamera(ctx, state.camera, (ctx) => {
     ctx.translate(
@@ -429,6 +515,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.fillRect(box.x, box.y, 1, 1);
       ctx.globalAlpha = 1;
     }
+
     // draw player
     {
       const player = state.animation.player;
@@ -495,89 +582,6 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.restore();
     }
   });
-
-  ctx.fillStyle = "black";
-  const levelName = classicLevels[state.curClassicIndex]!.name;
-  const fontSize = 60;
-  ctx.font = `${fontSize}px sans-serif`;
-  ctx.textAlign = "center";
-
-  {
-    // undo text
-    ctx.globalAlpha = state.animation.undoTransparency;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const fontSize = 100;
-    ctx.font = `${fontSize}px sans-serif`;
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(0, 0, rect.width, rect.height);
-    ctx.fillStyle = "#f22";
-    ctx.fillText("UNDO", rect.width / 2, rect.height - fontSize);
-    ctx.globalAlpha = 1;
-  }
-
-  ctx.fillStyle = "black";
-  const offset = 3;
-  ctx.fillText(`${levelName}`, rect.width / 2 + offset, fontSize + offset);
-  ctx.fillStyle = "white";
-  ctx.fillText(`${levelName}`, rect.width / 2, fontSize);
-
-  // PAUSE MENU JUICE
-  if (state.pauseMenu.isPaused) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-    ctx.fillRect(0, 0, rect.width, rect.height);
-
-    const menuFontSize = 80;
-    ctx.font = `${menuFontSize}px sans-serif`;
-
-    // handle input here
-    if (
-      Input.keysJustPressed.has("ArrowUp") ||
-      Input.keysJustPressed.has("w")
-    ) {
-      state.pauseMenu.selectedIndex -= 1;
-      if (state.pauseMenu.selectedIndex < 0)
-        state.pauseMenu.selectedIndex = state.pauseMenu.options.length - 1;
-    }
-    if (
-      Input.keysJustPressed.has("ArrowDown") ||
-      Input.keysJustPressed.has("s")
-    ) {
-      state.pauseMenu.selectedIndex += 1;
-      if (state.pauseMenu.selectedIndex >= state.pauseMenu.options.length)
-        state.pauseMenu.selectedIndex = 0;
-    }
-
-    if (Input.keysJustPressed.has("Enter")) {
-      const selectedOption =
-        state.pauseMenu.options[state.pauseMenu.selectedIndex]!;
-      switch (selectedOption) {
-        case "restart level":
-          loadLevel();
-          state.pauseMenu.isPaused = false;
-          break;
-        case "back to level select":
-          state.currentState = "level-select";
-          state.pauseMenu.isPaused = false;
-          break;
-      }
-    }
-
-    // draw options centered on screen
-    for (let i = 0; i < state.pauseMenu.options.length; i++) {
-      const option = state.pauseMenu.options[i]!;
-      const textY =
-        rect.height / 2 +
-        (i - (state.pauseMenu.options.length - 1) / 2) * (menuFontSize + 20);
-      if (i === state.pauseMenu.selectedIndex) {
-        ctx.fillStyle = "yellow";
-        ctx.fillText(`> ${option} <`, rect.width / 2, textY);
-      } else {
-        ctx.fillStyle = "white";
-        ctx.fillText(option, rect.width / 2, textY);
-      }
-    }
-  }
 }
 
 export function tick(ctx: CanvasRenderingContext2D, dt: number) {
@@ -642,16 +646,27 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     const selectedIndex =
       state.levelSelect.selectedY * levelsPerRow + state.levelSelect.selectedX;
 
-    if (Input.keysJustPressed.has("Enter")) {
+    state.curClassicIndex = selectedIndex;
+    loadLevel();
+
+    if (Input.keysJustPressed.has("Enter") || Input.keysJustPressed.has(" ")) {
       if (selectedIndex < classicLevels.length) {
-        state.curClassicIndex = selectedIndex;
-        loadLevel();
         state.currentState = "in-level";
       }
     }
 
     ctx.fillStyle = "#99f";
     ctx.fillRect(0, 0, rect.width, rect.height);
+
+    ctx.save();
+    drawSokobanLevel(ctx, rect);
+    ctx.restore();
+    // draw back to main ctx
+
+    ctx.fillStyle = "black";
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(0, 0, rect.width, rect.height);
+    ctx.globalAlpha = 1;
 
     // lets do 9 rows of 10 each?
     const shadowOffset = 0.4;
