@@ -39,9 +39,9 @@ function runTickStep(
   assert(ctx);
   ctx.scale(devicePixelRatio, devicePixelRatio);
 
-  // console.time("tick");
+  console.time("tick");
   tick(ctx, dt);
-  // console.timeEnd("tick");
+  console.timeEnd("tick");
 }
 
 function assert(condition: any): asserts condition {

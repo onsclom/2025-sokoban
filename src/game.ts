@@ -8,6 +8,9 @@ import { playInvalidMoveSound, playSelectSound, playStepSound } from "./sound";
 
 import { classicLevels } from "./levels/parse-levels";
 
+const levelSelectTextColor = "#ff4";
+const levelCompletedColor = "#aaa";
+
 // Cached textures for performance
 let cachedGrassTexture: HTMLCanvasElement | null = null;
 let cachedStoneTexture: HTMLCanvasElement | null = null;
@@ -348,7 +351,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
   ctx.fillStyle = "#99f";
   const rect = ctx.canvas.getBoundingClientRect();
   ctx.fillRect(0, 0, rect.width, rect.height);
-  drawSokobanLevel(ctx);
+  drawSokobanLevel(ctx, rect, dt);
 
   ctx.fillStyle = "black";
   const levelName = classicLevels[state.curClassicIndex]!.name;
@@ -394,7 +397,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.font = `${fontSize}px sans-serif`;
       ctx.rotate(-0.05 * Math.sin(performance.now() * 0.005));
       ctx.fillStyle = "black";
-      ctx.fillText("YOU WIN!", 0 + 3, 0 + 3);
+      ctx.fillText("YOU WIN!", 0 + vh * 0.05, 0 + vh * 0.05);
       ctx.fillStyle = "white";
       ctx.fillText("YOU WIN!", 0, 0);
       ctx.restore();
@@ -405,8 +408,8 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.fillStyle = "black";
       ctx.fillText(
         "E for next level, R to restart",
-        rect.width / 2 + 3,
-        rect.height - subFontSize + 3,
+        rect.width / 2 + vh * 0.05,
+        rect.height - subFontSize + vh * 0.05,
       );
       ctx.fillStyle = "white";
       ctx.fillText(
@@ -424,9 +427,9 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
   ctx.font = `${fontSize}px sans-serif`;
   const levelCompleted = completedLevels.includes(state.curClassicIndex);
   ctx.fillStyle = "black";
-  const offset = 3;
+  const offset = vh * 0.4;
   ctx.fillText(`${levelName}`, rect.width / 2 + offset, fontSize + offset);
-  ctx.fillStyle = levelCompleted ? "gold" : "white";
+  ctx.fillStyle = levelCompleted ? levelCompletedColor : levelSelectTextColor;
   ctx.fillText(`${levelName}`, rect.width / 2, fontSize);
 
   // PAUSE MENU JUICE
@@ -490,11 +493,79 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
   }
 }
 
-function drawSokobanLevel(ctx: CanvasRenderingContext2D, rect?: DOMRect) {
+const cloudState = {
+  width: 0,
+  height: 0,
+  cloudInstances: [] as {
+    x: number;
+    y: number;
+    speed: number;
+    parts: { x: number; y: number }[];
+  }[],
+};
+
+function drawSokobanLevel(
+  ctx: CanvasRenderingContext2D,
+  rect: DOMRect,
+  dt: number,
+) {
   const levelSize = levelDimensions(state.level);
   const canvasRect = rect || ctx.canvas.getBoundingClientRect();
   state.camera.zoom =
     Camera.aspectFitZoom(canvasRect, levelSize.width, levelSize.height) * 0.85;
+  const vh = canvasRect.height / 100;
+
+  const cloudWidth = vh * 40;
+  const cloudHeight = vh * 20;
+  const cloudCircleRadius = vh * 5;
+
+  // draw clouds here?
+  if (
+    cloudState.width !== canvasRect.width ||
+    cloudState.height !== canvasRect.height
+  ) {
+    // generate some cloud instances
+    cloudState.width = canvasRect.width;
+    cloudState.height = canvasRect.height;
+    cloudState.cloudInstances = [];
+    const numClouds = Math.ceil(canvasRect.width / cloudWidth) * 4;
+    for (let i = 0; i < numClouds; i++) {
+      cloudState.cloudInstances.push({
+        x: Math.random() * (canvasRect.width + cloudWidth) - cloudWidth,
+        y: Math.random() * (canvasRect.height + cloudHeight * 2) - cloudHeight,
+        speed: 10 + Math.random() * 20,
+        parts: Array.from({ length: 20 }).map(() => ({
+          x:
+            Math.random() * (cloudWidth - cloudCircleRadius * 2) +
+            cloudCircleRadius,
+          y:
+            Math.random() * (cloudHeight - cloudCircleRadius * 2) +
+            cloudCircleRadius,
+        })),
+      });
+    }
+  }
+  // draw clouds
+  ctx.fillStyle = "white";
+  ctx.globalAlpha = 0.9;
+  for (const cloudInstance of cloudState.cloudInstances) {
+    cloudInstance.x += cloudInstance.speed * dt * 0.001;
+    if (cloudInstance.x > canvasRect.width) {
+      cloudInstance.x = -cloudWidth;
+    }
+    for (const circle of cloudInstance.parts) {
+      ctx.beginPath();
+      ctx.arc(
+        circle.x + cloudInstance.x,
+        circle.y + cloudInstance.y,
+        cloudCircleRadius,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
 
   // draw sokoban
   Camera.drawWithCamera(ctx, state.camera, (ctx) => {
@@ -802,15 +873,17 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       const offscreenCanvas = document.createElement("canvas");
       offscreenCanvas.width = rect.width * devicePixelRatio;
       offscreenCanvas.height = rect.height * devicePixelRatio;
+      offscreenCanvas.style.width = `${rect.width}px`;
+      offscreenCanvas.style.height = `${rect.height}px`;
       document.body.appendChild(offscreenCanvas);
       const offscreenCtx = offscreenCanvas.getContext("2d")!;
-      offscreenCtx.translate(-rect.width / 2, -rect.height / 2);
-      drawSokobanLevel(offscreenCtx, rect);
+      offscreenCtx.scale(devicePixelRatio, devicePixelRatio);
+      drawSokobanLevel(offscreenCtx, rect, dt);
       document.body.removeChild(offscreenCanvas);
 
       {
         ctx.save();
-        ctx.filter = `blur(${vh}px)`;
+        ctx.filter = `blur(8px)`;
         ctx.drawImage(offscreenCanvas, 0, 0, rect.width, rect.height);
         ctx.restore();
       }
@@ -863,11 +936,11 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       Math.PI * 2,
     );
     ctx.strokeStyle = "black";
-    ctx.lineWidth = 4;
+    ctx.lineWidth = vh * 0.5;
     ctx.stroke();
 
     // lets do 9 rows of 10 each?
-    const shadowOffset = 0.4;
+    const shadowOffset = vh * 0.4;
     for (let i = 0; i < levelAmount; i++) {
       const level = classicLevels[i]!;
       const row = Math.floor(i / levelsPerRow);
@@ -897,10 +970,12 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
           Math.sin(performance.now() * 0.003 + (x + y) * 0.1) * vh * 0.4,
       );
       ctx.fillStyle = "black";
-      ctx.fillText(`${i + 1}`, vh * shadowOffset, vh * shadowOffset);
+      ctx.fillText(`${i + 1}`, shadowOffset, shadowOffset);
 
       const levelCompleted = completedLevels.includes(i);
-      ctx.fillStyle = levelCompleted ? "gold" : "white";
+      ctx.fillStyle = levelCompleted
+        ? levelCompletedColor
+        : levelSelectTextColor;
       ctx.fillText(`${i + 1}`, 0, 0);
       ctx.restore();
     }
@@ -919,8 +994,8 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.rotate(Math.sin(performance.now() * 0.002) * 0.03);
 
     ctx.fillStyle = "black";
-    ctx.fillText("sokoban.xyz", 3, shadowOffset * vh);
-    ctx.fillStyle = "white";
+    ctx.fillText("sokoban.xyz", vh * 0.4, vh * 0.4);
+    ctx.fillStyle = levelSelectTextColor;
     ctx.fillText("sokoban.xyz", 0, 0);
 
     ctx.restore();
@@ -928,13 +1003,13 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     // at bottom say "levels from original 1982 release"
     const subFontSize = vh * 3;
     ctx.font = `${subFontSize}px sans-serif`;
-    // ctx.fillStyle = "black";
-    // ctx.fillText(
-    //   "Levels from original 1982 release",
-    //   rect.width / 2 + 3,
-    //   rect.height - subFontSize + 3,
-    // );
-    ctx.fillStyle = "white";
+    ctx.fillStyle = "black";
+    ctx.fillText(
+      "(levels taken from original 1982 release)",
+      rect.width / 2 + vh * 0.05,
+      rect.height - subFontSize + vh * 0.05,
+    );
+    ctx.fillStyle = levelSelectTextColor;
     ctx.fillText(
       "(levels taken from original 1982 release)",
       rect.width / 2,
