@@ -474,7 +474,19 @@ function drawSokobanLevel(ctx: CanvasRenderingContext2D, rect?: DOMRect) {
     ctx.strokeStyle = "yellow";
     ctx.lineWidth = 0.075;
     for (const goal of state.level.static.goals) {
+      ctx.save();
+      ctx.strokeStyle = "yellow";
       ctx.strokeRect(goal.x + 0.2, goal.y + 0.2, 0.6, 0.6);
+      ctx.restore();
+
+      ctx.save();
+      ctx.strokeStyle = "white";
+      ctx.globalAlpha =
+        Math.abs(
+          Math.sin(performance.now() * 0.005 + (goal.x + goal.y) * 0.5),
+        ) * 0.75;
+      ctx.strokeRect(goal.x + 0.2, goal.y + 0.2, 0.6, 0.6);
+      ctx.restore();
     }
 
     // draw boxes
@@ -660,15 +672,29 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.fillStyle = "#99f";
     ctx.fillRect(0, 0, rect.width, rect.height);
 
-    ctx.save();
-    drawSokobanLevel(ctx, rect);
-    ctx.restore();
-    // draw back to main ctx
+    {
+      // for some reason adding offscreenCanvas as a child of body makes it render correctly ????
+      const offscreenCanvas = document.createElement("canvas");
+      offscreenCanvas.width = rect.width * devicePixelRatio;
+      offscreenCanvas.height = rect.height * devicePixelRatio;
+      document.body.appendChild(offscreenCanvas);
+      const offscreenCtx = offscreenCanvas.getContext("2d")!;
+      offscreenCtx.translate(-rect.width / 2, -rect.height / 2);
+      drawSokobanLevel(offscreenCtx, rect);
+      document.body.removeChild(offscreenCanvas);
 
-    ctx.fillStyle = "black";
-    ctx.globalAlpha = 0.7;
-    ctx.fillRect(0, 0, rect.width, rect.height);
-    ctx.globalAlpha = 1;
+      {
+        ctx.save();
+        ctx.filter = `blur(${vh}px)`;
+        ctx.drawImage(offscreenCanvas, 0, 0, rect.width, rect.height);
+        ctx.restore();
+      }
+    }
+
+    // ctx.fillStyle = "black";
+    // ctx.globalAlpha = 0.7;
+    // ctx.fillRect(0, 0, rect.width, rect.height);
+    // ctx.globalAlpha = 1;
 
     state.levelSelect.animatedX = lerp(
       state.levelSelect.animatedX,
