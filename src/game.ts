@@ -9,7 +9,7 @@ import { playInvalidMoveSound, playSelectSound, playStepSound } from "./sound";
 import { classicLevels } from "./levels/parse-levels";
 
 const levelSelectTextColor = "#ff4";
-const levelCompletedColor = "#aaa";
+const levelCompletedColor = "#ccc";
 
 // Cached textures for performance
 let cachedGrassTexture: HTMLCanvasElement | null = null;
@@ -1006,8 +1006,8 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.fillStyle = "black";
     ctx.fillText(
       "(levels taken from original 1982 release)",
-      rect.width / 2 + vh * 0.05,
-      rect.height - subFontSize + vh * 0.05,
+      rect.width / 2 + vh * 0.2,
+      rect.height - subFontSize + vh * 0.2,
     );
     ctx.fillStyle = levelSelectTextColor;
     ctx.fillText(
