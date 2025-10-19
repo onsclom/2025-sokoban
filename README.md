@@ -1,15 +1,5 @@
 # 2025-sokoban
 
-To install dependencies:
+https://sokoban.xyz
 
-```bash
-bun install
-```
-
-To run:
-
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.3.0. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Project made for Hack Vegas 2025 hackathon. Code is messy and hacky! Read at your own risk.

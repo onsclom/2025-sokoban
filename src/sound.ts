@@ -67,3 +67,29 @@ export function playInvalidMoveSound() {
   source.connect(audioCtx.destination);
   source.start();
 }
+
+// sound when selecting item in menu
+const selectSoundBuffer = (function () {
+  // high pitched DING
+  const duration = 0.15;
+  const frequency = 800;
+  const length = sampleRate * duration;
+  const buffer = audioCtx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) {
+    const time = i / sampleRate;
+    const volume = 1 - time / duration;
+    const sineWave = Math.sin(2 * Math.PI * frequency * time);
+    data[i] = sineWave * volume * 0.3;
+  }
+  return buffer;
+})();
+
+export function playSelectSound() {
+  const pitchVariation = Math.random() * 0.1 - 0.05;
+  const source = audioCtx.createBufferSource();
+  source.buffer = selectSoundBuffer;
+  source.playbackRate.value = 1 + pitchVariation;
+  source.connect(audioCtx.destination);
+  source.start();
+}

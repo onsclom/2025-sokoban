@@ -4,7 +4,7 @@ import grassSpecs from "./generator/grass-specs.json";
 
 import * as Camera from "./camera";
 import * as Input from "./input";
-import { playInvalidMoveSound, playStepSound } from "./sound";
+import { playInvalidMoveSound, playSelectSound, playStepSound } from "./sound";
 
 import { classicLevels } from "./levels/parse-levels";
 
@@ -37,6 +37,19 @@ const initAnimation = {
   timeTillNextBlink: 3000 + Math.random() * 2000, // 3-5 seconds initially
   isBlinking: false,
 };
+
+const completedLevels = JSON.parse(
+  localStorage.getItem("completedLevels") ?? "[]",
+) as number[];
+console.log(completedLevels);
+function addCompletedLevel(index: number) {
+  if (!completedLevels.includes(index)) {
+    completedLevels.push(index);
+  }
+  localStorage.setItem("completedLevels", JSON.stringify(completedLevels));
+}
+
+const viewSource = document.querySelector("a");
 
 const keyRepeatDelay = 250;
 const keyRepeatInterval = 115;
@@ -116,6 +129,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
 
   if (Input.keysJustPressed.has("Escape")) {
     state.pauseMenu.isPaused = !state.pauseMenu.isPaused;
+    state.pauseMenu.selectedIndex = 0;
   }
 
   if (!state.pauseMenu.isPaused) {
@@ -245,17 +259,17 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       loadLevel();
     }
 
-    if (Input.keysJustPressed.has("g")) {
-      // generate new level
-      state.level = generateLevel({
-        width: 5,
-        height: 5,
-        boxAmount: 1,
-        generationMoves: 1,
-      });
-      state.animation = structuredClone(initAnimation); // reset animation
-      state.undoStack = [];
-    }
+    // if (Input.keysJustPressed.has("g")) {
+    //   // generate new level
+    //   state.level = generateLevel({
+    //     width: 5,
+    //     height: 5,
+    //     boxAmount: 1,
+    //     generationMoves: 1,
+    //   });
+    //   state.animation = structuredClone(initAnimation); // reset animation
+    //   state.undoStack = [];
+    // }
   }
 
   state.animation.cameraOffset.x = lerp(
@@ -401,13 +415,18 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
         rect.height - subFontSize,
       );
     }
+
+    if (allBoxesOnGoals) {
+      addCompletedLevel(state.curClassicIndex);
+    }
   }
 
   ctx.font = `${fontSize}px sans-serif`;
+  const levelCompleted = completedLevels.includes(state.curClassicIndex);
   ctx.fillStyle = "black";
   const offset = 3;
   ctx.fillText(`${levelName}`, rect.width / 2 + offset, fontSize + offset);
-  ctx.fillStyle = "white";
+  ctx.fillStyle = levelCompleted ? "gold" : "white";
   ctx.fillText(`${levelName}`, rect.width / 2, fontSize);
 
   // PAUSE MENU JUICE
@@ -426,6 +445,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       state.pauseMenu.selectedIndex -= 1;
       if (state.pauseMenu.selectedIndex < 0)
         state.pauseMenu.selectedIndex = state.pauseMenu.options.length - 1;
+      playStepSound();
     }
     if (
       Input.keysJustPressed.has("ArrowDown") ||
@@ -434,6 +454,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       state.pauseMenu.selectedIndex += 1;
       if (state.pauseMenu.selectedIndex >= state.pauseMenu.options.length)
         state.pauseMenu.selectedIndex = 0;
+      playStepSound();
     }
 
     if (Input.keysJustPressed.has("Enter") || Input.keysJustPressed.has(" ")) {
@@ -449,6 +470,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
           state.pauseMenu.isPaused = false;
           break;
       }
+      playSelectSound();
     }
 
     // draw options centered on screen
@@ -691,6 +713,11 @@ function drawSokobanLevel(ctx: CanvasRenderingContext2D, rect?: DOMRect) {
 }
 
 export function tick(ctx: CanvasRenderingContext2D, dt: number) {
+  if (viewSource) {
+    viewSource.style.visibility =
+      state.currentState === "level-select" ? "visible" : "hidden";
+  }
+
   // Initialize cached textures on first tick
   if (!cachedGrassTexture) {
     cachedGrassTexture = createGrassTexture();
@@ -719,6 +746,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       if (state.levelSelect.selectedY < 0) {
         state.levelSelect.selectedY = rowAmount - 1;
       }
+      playStepSound();
     }
     if (
       Input.keysJustPressed.has("ArrowDown") ||
@@ -728,6 +756,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       if (state.levelSelect.selectedY >= rowAmount) {
         state.levelSelect.selectedY = 0;
       }
+      playStepSound();
     }
     if (
       Input.keysJustPressed.has("ArrowLeft") ||
@@ -737,6 +766,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       if (state.levelSelect.selectedX < 0) {
         state.levelSelect.selectedX = levelsPerRow - 1;
       }
+      playStepSound();
     }
     if (
       Input.keysJustPressed.has("ArrowRight") ||
@@ -746,6 +776,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       if (state.levelSelect.selectedX >= levelsPerRow) {
         state.levelSelect.selectedX = 0;
       }
+      playStepSound();
     }
 
     const levelButtonSize = vh * 8;
@@ -760,6 +791,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       if (selectedIndex < classicLevels.length) {
         state.currentState = "in-level";
       }
+      playSelectSound();
     }
 
     ctx.fillStyle = "#99f";
@@ -800,7 +832,7 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       1 - Math.exp(-animationSpeed * dt),
     );
     // draw the yellow circle here
-    ctx.fillStyle = "rgba(255, 255, 0, 0.8)";
+    ctx.fillStyle = "rgba(0,255,255, 0.8)";
     ctx.beginPath();
     ctx.arc(
       rect.width / 2 -
@@ -816,6 +848,23 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       Math.PI * 2,
     );
     ctx.fill();
+    ctx.beginPath();
+    ctx.arc(
+      rect.width / 2 -
+        (levelsPerRow * levelButtonSize) / 2 +
+        state.levelSelect.animatedX * levelButtonSize +
+        levelButtonSize / 2,
+      rect.height / 2 -
+        (rowAmount * levelButtonSize) / 2 +
+        state.levelSelect.animatedY * levelButtonSize +
+        levelButtonSize / 2,
+      levelButtonSize / 2,
+      0,
+      Math.PI * 2,
+    );
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 4;
+    ctx.stroke();
 
     // lets do 9 rows of 10 each?
     const shadowOffset = 0.4;
@@ -850,7 +899,8 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
       ctx.fillStyle = "black";
       ctx.fillText(`${i + 1}`, vh * shadowOffset, vh * shadowOffset);
 
-      ctx.fillStyle = "white";
+      const levelCompleted = completedLevels.includes(i);
+      ctx.fillStyle = levelCompleted ? "gold" : "white";
       ctx.fillText(`${i + 1}`, 0, 0);
       ctx.restore();
     }
@@ -874,6 +924,22 @@ export function tick(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.fillText("sokoban.xyz", 0, 0);
 
     ctx.restore();
+
+    // at bottom say "levels from original 1982 release"
+    const subFontSize = vh * 3;
+    ctx.font = `${subFontSize}px sans-serif`;
+    // ctx.fillStyle = "black";
+    // ctx.fillText(
+    //   "Levels from original 1982 release",
+    //   rect.width / 2 + 3,
+    //   rect.height - subFontSize + 3,
+    // );
+    ctx.fillStyle = "white";
+    ctx.fillText(
+      "(levels taken from original 1982 release)",
+      rect.width / 2,
+      rect.height - subFontSize,
+    );
   }
 
   Input.resetInput();
