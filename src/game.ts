@@ -59,9 +59,16 @@ const initState = {
   camera: Camera.create(),
 
   keyRepeat: {
-    lastDir: { x: 0, y: 0 },
-    timeHeld: 0,
-    repeats: 0,
+    movement: {
+      lastDir: { x: 0, y: 0 },
+      timeHeld: 0,
+      repeats: 0,
+    },
+    undo: {
+      isHeld: false,
+      timeHeld: 0,
+      repeats: 0,
+    },
   },
 
   pauseMenu: {
@@ -127,8 +134,8 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       loadLevel();
     }
 
-    if (Input.keysJustPressed.has("z") || Input.keysJustPressed.has("u")) {
-      // undo
+    // Helper function for undo action
+    const performUndo = () => {
       if (state.undoStack.length === 0) {
         playInvalidMoveSound();
         state.animation.isBlinking = true;
@@ -140,8 +147,37 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
         state.animation.happinessTarget = 0.5;
         state.animation.undoTransparency = 1.0;
       }
+    };
+
+    if (Input.keysJustPressed.has("z") || Input.keysJustPressed.has("u")) {
+      performUndo();
     }
 
+    // Helper function to handle key repeat logic
+    const handleKeyRepeat = (
+      isHeld: boolean,
+      repeatState: { timeHeld: number; repeats: number },
+      action: () => void,
+    ) => {
+      if (isHeld) {
+        repeatState.timeHeld += dt;
+        if (repeatState.timeHeld >= keyRepeatDelay) {
+          const oldRepeats = repeatState.repeats;
+          const newRepeats = Math.floor(
+            (repeatState.timeHeld - keyRepeatDelay) / keyRepeatInterval,
+          );
+          repeatState.repeats = newRepeats;
+          if (oldRepeats !== repeatState.repeats) {
+            action();
+          }
+        }
+      } else {
+        repeatState.timeHeld = 0;
+        repeatState.repeats = 0;
+      }
+    };
+
+    // Movement handling
     if (
       Input.keysJustPressed.has("d") ||
       Input.keysJustPressed.has("ArrowRight")
@@ -164,7 +200,7 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
       attemptMovePlayer(0, 1);
     }
 
-    // handle keyRepeat here
+    // Movement key repeat
     const curDir = { x: 0, y: 0 };
     if (Input.keysDown.has("d") || Input.keysDown.has("ArrowRight")) {
       curDir.x = 1;
@@ -175,28 +211,33 @@ function inLevelStuff(ctx: CanvasRenderingContext2D, dt: number) {
     } else if (Input.keysDown.has("s") || Input.keysDown.has("ArrowDown")) {
       curDir.y = 1;
     }
-    if (
-      curDir.x === state.keyRepeat.lastDir.x &&
-      curDir.y === state.keyRepeat.lastDir.y &&
-      (curDir.x !== 0 || curDir.y !== 0)
-    ) {
-      state.keyRepeat.timeHeld += dt;
-      if (state.keyRepeat.timeHeld >= keyRepeatDelay) {
-        const oldRepeats = state.keyRepeat.repeats;
-        const newRepeats = Math.max(
-          0,
-          (state.keyRepeat.timeHeld - keyRepeatDelay) / keyRepeatInterval,
-        );
-        state.keyRepeat.repeats = Math.floor(newRepeats);
-        if (oldRepeats !== state.keyRepeat.repeats) {
-          attemptMovePlayer(curDir.x, curDir.y);
-        }
-      }
+
+    const isDirHeld = curDir.x !== 0 || curDir.y !== 0;
+    const sameDirHeld =
+      curDir.x === state.keyRepeat.movement.lastDir.x &&
+      curDir.y === state.keyRepeat.movement.lastDir.y &&
+      isDirHeld;
+
+    if (sameDirHeld) {
+      handleKeyRepeat(true, state.keyRepeat.movement, () =>
+        attemptMovePlayer(curDir.x, curDir.y),
+      );
     } else {
-      // new direction or no direction
-      state.keyRepeat.lastDir = curDir;
-      state.keyRepeat.timeHeld = 0;
-      state.keyRepeat.repeats = 0;
+      state.keyRepeat.movement.lastDir = curDir;
+      handleKeyRepeat(false, state.keyRepeat.movement, () => {});
+    }
+
+    // Undo key repeat
+    const isUndoHeld = Input.keysDown.has("z") || Input.keysDown.has("u");
+    const undoStateChanged = isUndoHeld !== state.keyRepeat.undo.isHeld;
+
+    if (undoStateChanged && !isUndoHeld) {
+      // Key was released, reset repeat state
+      state.keyRepeat.undo.isHeld = false;
+      handleKeyRepeat(false, state.keyRepeat.undo, () => {});
+    } else if (isUndoHeld) {
+      state.keyRepeat.undo.isHeld = true;
+      handleKeyRepeat(true, state.keyRepeat.undo, performUndo);
     }
 
     if (Input.keysJustPressed.has("r")) {
