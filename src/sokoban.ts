@@ -221,3 +221,144 @@ export function generateLevel(props: {
 
   return level;
 }
+
+function dynamicStateString(dynamic: Level["dynamic"]): string {
+  const boxPositions = dynamic.boxes
+    .map((box) => `${box.x},${box.y}`)
+    .sort()
+    .join("|");
+  return `${dynamic.player.x},${dynamic.player.y};${boxPositions}`;
+}
+
+export function solveLevel(level: Level) {
+  // simple sokoban solver using breadth first search
+  // push based
+
+  const goalCount = level.static.goals.length;
+
+  const seen = new Set<string>([dynamicStateString(level.dynamic)]);
+  const toExplore = [
+    {
+      state: structuredClone(level.dynamic),
+      pushes: 0,
+    },
+  ];
+
+  let maxMoveSeen = 0;
+
+  while (toExplore.length > 0) {
+    const current = toExplore.shift()!;
+    // find all possible pushes
+    {
+      // floodfill to find all reachable positions for the player
+      const reachable = new Set<string>();
+      const isWall = (x: number, y: number) =>
+        level.static.walls.some((wall) => wall.x === x && wall.y === y);
+      const isBox = (x: number, y: number) =>
+        current.state.boxes.some((box) => box.x === x && box.y === y);
+      {
+        const toVisit = [current.state.player];
+        while (toVisit.length > 0) {
+          const pos = toVisit.pop()!;
+          const key = `${pos.x},${pos.y}`;
+          if (reachable.has(key)) continue;
+          reachable.add(key);
+          // visit neighbors
+          const neighbors = [
+            { x: pos.x + 1, y: pos.y },
+            { x: pos.x - 1, y: pos.y },
+            { x: pos.x, y: pos.y + 1 },
+            { x: pos.x, y: pos.y - 1 },
+          ];
+          for (const neighbor of neighbors) {
+            if (
+              !isWall(neighbor.x, neighbor.y) &&
+              !isBox(neighbor.x, neighbor.y) &&
+              !reachable.has(`${neighbor.x},${neighbor.y}`)
+            ) {
+              toVisit.push(neighbor);
+            }
+          }
+        }
+      }
+
+      // for each box, see if the player can reach the position behind it to push it
+      {
+        for (const box of current.state.boxes) {
+          const pushDirections = [
+            { x: 0, y: -1 },
+            { x: 0, y: 1 },
+            { x: -1, y: 0 },
+            { x: 1, y: 0 },
+          ];
+          const oldBoxX = box.x;
+          const oldBoxY = box.y;
+          for (const dir of pushDirections) {
+            const playerPos = {
+              x: box.x - dir.x,
+              y: box.y - dir.y,
+            };
+            const newBoxPos = {
+              x: box.x + dir.x,
+              y: box.y + dir.y,
+            };
+            // check if player can reach playerPos
+            if (!reachable.has(`${playerPos.x},${playerPos.y}`)) {
+              continue;
+            }
+            // check if newBoxPos is free
+            if (
+              isWall(newBoxPos.x, newBoxPos.y) ||
+              isBox(newBoxPos.x, newBoxPos.y)
+            ) {
+              continue;
+            }
+
+            {
+              // perform push
+              const newState = structuredClone(current.state);
+              // move box
+              const boxToMove = newState.boxes.find(
+                (b) => b.x === oldBoxX && b.y === oldBoxY,
+              )!;
+              boxToMove.x = newBoxPos.x;
+              boxToMove.y = newBoxPos.y;
+              // move player
+              newState.player.x = oldBoxX;
+              newState.player.y = oldBoxY;
+
+              // check if solved
+              let boxesOnGoals = 0;
+              for (const b of newState.boxes) {
+                if (
+                  level.static.goals.some((g) => g.x === b.x && g.y === b.y)
+                ) {
+                  boxesOnGoals++;
+                }
+              }
+              if (boxesOnGoals === goalCount) {
+                return current.pushes + 1;
+              }
+
+              const stateString = dynamicStateString(newState);
+              if (!seen.has(stateString)) {
+                seen.add(stateString);
+                const newPushes = current.pushes + 1;
+                toExplore.push({
+                  state: newState,
+                  pushes: newPushes,
+                });
+                if (newPushes > maxMoveSeen) {
+                  maxMoveSeen = newPushes;
+                  console.log(`max pushes seen: ${maxMoveSeen}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return null; // unsolvable
+}
